@@ -1,0 +1,74 @@
+name: Complete SOL V2 Repository
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'sol_v2_bootstrap.py'
+      - 'sol_v2_launch_stable.py'
+      - 'CHALLENGER_BASE_PIN.txt'
+      - '.github/workflows/complete_sol_v2_setup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  hydrate-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout SOL V2
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Populate pinned Challenger support snapshot
+        run: python sol_v2_bootstrap.py --populate-only
+
+      - name: Verify SOL V2 source and stable launcher compile
+        run: |
+          python -m py_compile app.py sol_v2_bootstrap.py sol_v2_launch_stable.py
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+
+          app = Path('app.py')
+          frozen = Path('SOL_V2_BASELINE_DO_NOT_EDIT.py')
+          assert app.exists() and frozen.exists()
+          assert app.read_bytes() == frozen.read_bytes(), 'SOL V2 app.py no longer matches frozen baseline'
+
+          required = [
+              'learning_data/graded_history.csv',
+              'learning_data/pitch_mix_matchups.csv',
+              'learning_data/savant_batter_platoon_2026.csv',
+              'learning_data/savant_batter_profiles.csv',
+              'learning_data/savant_pitcher_stats.csv',
+              'tools/apply_runtime_stability_v1.py',
+              'tools/apply_manual_refresh_state_v2.py',
+              'tools/apply_savant_manual_only_v3.py',
+              'tools/apply_recency_cache_guard_v3.py',
+              'tools/apply_recency_lazy_guard_v2.py',
+          ]
+          missing = [p for p in required if not Path(p).exists()]
+          assert not missing, missing
+          print('SOL V2 source preserved:', hashlib.sha256(app.read_bytes()).hexdigest())
+          print('SOL V2 support hydration PASS')
+          PY
+
+      - name: Commit hydrated support into SOL V2 only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "SOL V2 support already complete."
+          else
+            git commit -m "Hydrate pinned Challenger support for SOL V2"
+            git push origin HEAD:main
+          fi
