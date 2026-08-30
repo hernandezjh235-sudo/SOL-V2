@@ -1,0 +1,19 @@
+name: Challenger Savant Refresh - App Controlled
+
+# Savant refresh is intentionally controlled by the app's explicit
+# Refresh Live Board / Pull Lines action. This workflow must not refresh data,
+# commit CSVs, or trigger Railway redeploys in the background.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app-controlled-only:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Savant refresh policy
+        run: |
+          echo "Automatic GitHub Savant refresh is disabled."
+          echo "Use Refresh Live Board / Pull Lines inside the deployed app."
