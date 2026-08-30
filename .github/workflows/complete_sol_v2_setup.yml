@@ -92,3 +92,5 @@ jobs:
             git commit -m "Hydrate pinned Challenger support for SOL V2"
             git push origin HEAD:main
           fi
+
+# Final verification trigger after runtime isolation cleanup.
