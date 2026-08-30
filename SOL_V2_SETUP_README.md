@@ -1,35 +1,75 @@
 # Challenger SOL V2 — Standalone Repository Setup
 
-This package is intentionally separate from the production Challenger repository.
+This repository is intentionally separate from the production Challenger repository.
 
 ## What is protected
 
-- `app.py` = SOL V2 experimental app.
-- `SOL_V2_BASELINE_DO_NOT_EDIT.py` = byte-for-byte frozen copy of that SOL V2 app.
-- The original Challenger repository is **read only** to this setup and is never modified.
-- The Challenger source `app.py` is never allowed to replace SOL V2 `app.py`.
+- `app.py` = SOL V2 experimental K app.
+- `SOL_V2_BASELINE_DO_NOT_EDIT.py` = byte-for-byte frozen copy of the SOL V2 baseline.
+- The original Challenger repository is read only to this setup and is never modified.
+- Challenger `app.py` is never allowed to replace SOL V2 `app.py`.
+- SOL V2 does not reapply Challenger K, Moneyline, or Pitching Outs model patches at runtime.
 
-## Full support snapshot
+## Pinned support snapshot
 
-The supporting repository files are pinned to this exact Challenger commit:
+Supporting repository files are pinned to Challenger commit:
 
 `1e696e484ada2fc4cb8a8a8b71a994e2988bc868`
 
-That includes the Challenger support/data structure such as `learning_data/`, Savant files, tools, helper modules, and other tracked support files from that snapshot. Challenger workflow YAML files are preserved under `.github/challenger_workflows_disabled/` instead of being activated, because some original Challenger workflows can rebuild/commit `app.py`. This prevents them from ever replacing SOL V2.
+That snapshot supplies `learning_data/`, Savant files, helper modules, runtime tools, and other tracked support files. Challenger workflow YAML files are copied only into `.github/challenger_workflows_disabled/`, never activated in SOL V2.
 
-Because ChatGPT's GitHub connector cannot directly export a repository archive as local bytes, this upload package completes the pinned snapshot **inside the new repository**. On the first push, `.github/workflows/complete_sol_v2_setup.yml` runs `sol_v2_bootstrap.py`, reads that pinned public Challenger snapshot, copies all support files except the SOL-owned protected files, verifies `app.py`, and commits the support into the NEW repository only.
+## Runtime behavior
 
-Railway has a second safety net: `Procfile` runs `sol_v2_bootstrap.py`. If the GitHub Action has not populated support yet, Railway pulls the same pinned snapshot before starting Streamlit. After support exists, it simply starts SOL V2.
+Railway starts:
 
-## Upload steps
+`python sol_v2_bootstrap.py`
 
-1. Create a brand-new empty GitHub repository, for example `challenger-sol-v2`.
-2. Unzip this package.
-3. Upload **all files and folders from inside the ZIP** to the new repository and commit them.
-4. Let the `Complete SOL V2 Repository` GitHub Action finish. It will add the pinned support files automatically.
-5. Connect that new repository to a separate Railway service.
-6. Copy any private environment variables/secrets you use in Challenger into the new Railway service manually. Secrets are not stored in this ZIP or copied from Challenger.
+The bootstrap first ensures the pinned Challenger support snapshot exists locally, then hands control to `sol_v2_launch_stable.py`.
 
-## Deployment behavior
+`sol_v2_launch_stable.py` copies the protected SOL `app.py` to disposable `runtime_app.py` and applies ONLY operational stability guards:
 
-The new SOL V2 service runs `app.py` directly with Streamlit. Challenger runtime patch scripts are preserved in the support snapshot for reference/integrity, but they are not automatically re-applied over SOL V2 at startup. This keeps SOL V2 behavior independent and prevents a Challenger runtime patch from unexpectedly changing the experiment.
+- `apply_runtime_stability_v1.py`
+- `apply_manual_refresh_state_v2.py`
+- `apply_savant_manual_only_v3.py`
+- `apply_recency_cache_guard_v3.py`
+- `apply_recency_lazy_guard_v2.py`
+
+This preserves Challenger-style Save / explicit Refresh / Savant / cache stability while keeping SOL V2's K experiment independent. K-model patches, Moneyline patches, and Pitching Outs patches are intentionally NOT re-applied over SOL V2 at startup.
+
+Streamlit source watching and run-on-save are disabled in production, matching the stable Challenger runtime pattern.
+
+## Self-hydration
+
+`.github/workflows/complete_sol_v2_setup.yml` hydrates the pinned support snapshot into this repository and verifies:
+
+- SOL `app.py` still matches `SOL_V2_BASELINE_DO_NOT_EDIT.py` byte-for-byte.
+- Required learning/Savant support files exist.
+- Required operational runtime guard scripts exist.
+- SOL source and launcher compile.
+
+The workflow commits hydrated support into SOL V2 only. It never writes to Challenger.
+
+## Manual hydration
+
+To populate support manually without launching Streamlit:
+
+```bash
+python sol_v2_bootstrap.py --populate-only
+```
+
+To force-refresh the local support tree from the same pinned Challenger commit:
+
+```bash
+python sol_v2_bootstrap.py --populate-only --force
+```
+
+## Railway
+
+Connect this repository to its own Railway service. Copy any private environment variables/secrets used by Challenger into the SOL V2 Railway service manually; secrets are not stored in GitHub or copied by this bootstrap.
+
+The intended A/B setup is:
+
+- Challenger = primary Codex-updated model.
+- SOL V2 = separate shadow/aggressive K candidate.
+- UD2.0 = existing benchmark.
+- Undefeated = existing benchmark.
