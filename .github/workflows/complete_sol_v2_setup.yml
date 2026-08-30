@@ -52,8 +52,6 @@ jobs:
               'tools/apply_runtime_stability_v1.py',
               'tools/apply_manual_refresh_state_v2.py',
               'tools/apply_savant_manual_only_v3.py',
-              'tools/apply_recency_cache_guard_v3.py',
-              'tools/apply_recency_lazy_guard_v2.py',
           ]
           missing = [p for p in required if not Path(p).exists()]
           assert not missing, missing
@@ -67,8 +65,6 @@ jobs:
           python tools/apply_runtime_stability_v1.py --app runtime_guard_test.py
           python tools/apply_manual_refresh_state_v2.py --app runtime_guard_test.py
           python tools/apply_savant_manual_only_v3.py --app runtime_guard_test.py
-          python tools/apply_recency_cache_guard_v3.py --app runtime_guard_test.py
-          python tools/apply_recency_lazy_guard_v2.py --app runtime_guard_test.py
           python -m py_compile runtime_guard_test.py
           python - <<'PY'
           from pathlib import Path
