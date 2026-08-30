@@ -26,15 +26,13 @@ Railway starts:
 
 The bootstrap first ensures the pinned Challenger support snapshot exists locally, then hands control to `sol_v2_launch_stable.py`.
 
-`sol_v2_launch_stable.py` copies the protected SOL `app.py` to disposable `runtime_app.py` and applies ONLY operational stability guards:
+`sol_v2_launch_stable.py` copies the protected SOL `app.py` to disposable `runtime_app.py` and applies ONLY the model-independent operational stability guards that have been verified against SOL V2:
 
 - `apply_runtime_stability_v1.py`
 - `apply_manual_refresh_state_v2.py`
 - `apply_savant_manual_only_v3.py`
-- `apply_recency_cache_guard_v3.py`
-- `apply_recency_lazy_guard_v2.py`
 
-This preserves Challenger-style Save / explicit Refresh / Savant / cache stability while keeping SOL V2's K experiment independent. K-model patches, Moneyline patches, and Pitching Outs patches are intentionally NOT re-applied over SOL V2 at startup.
+These preserve Challenger-style Save / explicit Refresh / Savant runtime stability while keeping SOL V2's K experiment independent. Challenger recency-shadow cache/lazy guards are intentionally not applied because they require the separate Challenger recency-shadow injection. K-model patches, Moneyline patches, and Pitching Outs patches are also intentionally NOT re-applied over SOL V2 at startup.
 
 Streamlit source watching and run-on-save are disabled in production, matching the stable Challenger runtime pattern.
 
@@ -46,6 +44,7 @@ Streamlit source watching and run-on-save are disabled in production, matching t
 - Required learning/Savant support files exist.
 - Required operational runtime guard scripts exist.
 - SOL source and launcher compile.
+- The exact runtime-only guard chain can be applied to a disposable SOL copy without altering the protected `app.py`.
 
 The workflow commits hydrated support into SOL V2 only. It never writes to Challenger.
 
