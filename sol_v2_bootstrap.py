@@ -15,7 +15,6 @@ import json
 import os
 import py_compile
 import shutil
-import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -29,7 +28,6 @@ ARCHIVE_URL = f"https://github.com/{BASE_REPO}/archive/{BASE_COMMIT}.zip"
 ROOT = Path(__file__).resolve().parent
 MARKER = ROOT / ".sol_v2_support_ready.json"
 
-# SOL-owned files must never be replaced by the Challenger snapshot.
 PROTECTED_TOP_LEVEL = {
     "app.py",
     "SOL_V2_BASELINE_DO_NOT_EDIT.py",
@@ -41,6 +39,7 @@ PROTECTED_TOP_LEVEL = {
     "requirements.txt",
     "runtime.txt",
     "SHA256SUMS.txt",
+    ".gitignore",
 }
 
 REQUIRED_SUPPORT = [
@@ -56,8 +55,6 @@ REQUIRED_SUPPORT = [
     "tools/apply_runtime_stability_v1.py",
     "tools/apply_manual_refresh_state_v2.py",
     "tools/apply_savant_manual_only_v3.py",
-    "tools/apply_recency_cache_guard_v3.py",
-    "tools/apply_recency_lazy_guard_v2.py",
 ]
 
 
@@ -76,7 +73,7 @@ def _support_complete() -> bool:
 def _download_archive(dst: Path) -> None:
     req = urllib.request.Request(
         ARCHIVE_URL,
-        headers={"User-Agent": "challenger-sol-v2-bootstrap/1.1"},
+        headers={"User-Agent": "challenger-sol-v2-bootstrap/1.2"},
     )
     with urllib.request.urlopen(req, timeout=120) as response, dst.open("wb") as fh:
         shutil.copyfileobj(response, fh)
@@ -87,9 +84,6 @@ def _copy_support(src_root: Path) -> None:
         if item.name in PROTECTED_TOP_LEVEL or item.name == ".git":
             continue
 
-        # Preserve Challenger's workflow files as reference, but never activate
-        # them in the SOL repository. Some Challenger workflows can rebuild or
-        # commit app.py, which would defeat SOL V2 isolation.
         if item.name == ".github" and item.is_dir():
             dest_gh = ROOT / ".github"
             dest_gh.mkdir(parents=True, exist_ok=True)
@@ -134,8 +128,6 @@ def populate(force: bool = False) -> None:
     if missing:
         raise RuntimeError(f"Support snapshot incomplete; missing: {missing}")
 
-    # Verify SOL-owned source remains valid. Operational patches are applied only
-    # later to runtime_app.py by sol_v2_launch_stable.py.
     py_compile.compile(str(ROOT / "app.py"), doraise=True)
     py_compile.compile(str(ROOT / "sol_v2_launch_stable.py"), doraise=True)
 
