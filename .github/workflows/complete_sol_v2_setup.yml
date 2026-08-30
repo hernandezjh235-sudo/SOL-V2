@@ -31,7 +31,7 @@ jobs:
       - name: Populate pinned Challenger support snapshot
         run: python sol_v2_bootstrap.py --populate-only
 
-      - name: Verify SOL V2 source and stable launcher compile
+      - name: Verify SOL V2 source and support
         run: |
           python -m py_compile app.py sol_v2_bootstrap.py sol_v2_launch_stable.py
           python - <<'PY'
@@ -61,10 +61,34 @@ jobs:
           print('SOL V2 support hydration PASS')
           PY
 
+      - name: Exercise runtime-only guard chain
+        run: |
+          cp app.py runtime_guard_test.py
+          python tools/apply_runtime_stability_v1.py --app runtime_guard_test.py
+          python tools/apply_manual_refresh_state_v2.py --app runtime_guard_test.py
+          python tools/apply_savant_manual_only_v3.py --app runtime_guard_test.py
+          python tools/apply_recency_cache_guard_v3.py --app runtime_guard_test.py
+          python tools/apply_recency_lazy_guard_v2.py --app runtime_guard_test.py
+          python -m py_compile runtime_guard_test.py
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          app = Path('app.py')
+          frozen = Path('SOL_V2_BASELINE_DO_NOT_EDIT.py')
+          runtime = Path('runtime_guard_test.py')
+          assert app.read_bytes() == frozen.read_bytes(), 'runtime guard test mutated SOL source'
+          assert runtime.exists() and runtime.stat().st_size > 0
+          print('Runtime-only guard chain PASS')
+          print('Protected source SHA256:', hashlib.sha256(app.read_bytes()).hexdigest())
+          PY
+          rm -f runtime_guard_test.py
+          rm -rf __pycache__
+
       - name: Commit hydrated support into SOL V2 only
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -rf __pycache__
           git add -A
           if git diff --cached --quiet; then
             echo "SOL V2 support already complete."
