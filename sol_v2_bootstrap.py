@@ -5,7 +5,8 @@ This script is safe for a brand-new repository or Railway service:
 - Reads a public, pinned Challenger commit archive.
 - Copies supporting files/data/tools into THIS repository only.
 - Never overwrites SOL V2 app.py or its frozen baseline.
-- Can populate only (GitHub Actions) or populate then launch Streamlit (Railway).
+- Can populate only (GitHub Actions) or populate then launch SOL's isolated
+  stable runtime wrapper.
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ import json
 import os
 import py_compile
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -32,6 +34,7 @@ PROTECTED_TOP_LEVEL = {
     "app.py",
     "SOL_V2_BASELINE_DO_NOT_EDIT.py",
     "sol_v2_bootstrap.py",
+    "sol_v2_launch_stable.py",
     "SOL_V2_SETUP_README.md",
     "CHALLENGER_BASE_PIN.txt",
     "Procfile",
@@ -50,6 +53,11 @@ REQUIRED_SUPPORT = [
     "challenger_bootstrap.py",
     "savant_display_bridge.py",
     "tools/launch_stable.py",
+    "tools/apply_runtime_stability_v1.py",
+    "tools/apply_manual_refresh_state_v2.py",
+    "tools/apply_savant_manual_only_v3.py",
+    "tools/apply_recency_cache_guard_v3.py",
+    "tools/apply_recency_lazy_guard_v2.py",
 ]
 
 
@@ -68,7 +76,7 @@ def _support_complete() -> bool:
 def _download_archive(dst: Path) -> None:
     req = urllib.request.Request(
         ARCHIVE_URL,
-        headers={"User-Agent": "challenger-sol-v2-bootstrap/1.0"},
+        headers={"User-Agent": "challenger-sol-v2-bootstrap/1.1"},
     )
     with urllib.request.urlopen(req, timeout=120) as response, dst.open("wb") as fh:
         shutil.copyfileobj(response, fh)
@@ -122,38 +130,31 @@ def populate(force: bool = False) -> None:
             raise RuntimeError(f"Unexpected Challenger archive layout: {roots}")
         _copy_support(roots[0])
 
-    # Verify all expected support landed and SOL V2 itself still compiles.
     missing = [rel for rel in REQUIRED_SUPPORT if not (ROOT / rel).exists()]
     if missing:
         raise RuntimeError(f"Support snapshot incomplete; missing: {missing}")
+
+    # Verify SOL-owned source remains valid. Operational patches are applied only
+    # later to runtime_app.py by sol_v2_launch_stable.py.
     py_compile.compile(str(ROOT / "app.py"), doraise=True)
+    py_compile.compile(str(ROOT / "sol_v2_launch_stable.py"), doraise=True)
 
     marker = {
         "base_repo": BASE_REPO,
         "base_commit": BASE_COMMIT,
         "populated_at_utc": datetime.now(timezone.utc).isoformat(),
         "app_py_protected": True,
+        "runtime_mode": "sol_v2_isolated_stable_launcher",
     }
     MARKER.write_text(json.dumps(marker, indent=2) + "\n", encoding="utf-8")
     print("SOL V2 support population complete. app.py remained protected.")
 
 
 def launch() -> None:
-    # Run SOL V2 directly. Runtime patch scripts from Challenger are retained as
-    # support/reference files, but are NOT re-applied to the independent SOL app.
-    # This prevents runtime patching from mutating SOL V2 behavior.
-    port = str(os.environ.get("PORT") or "8080")
-    os.environ.setdefault("STREAMLIT_SERVER_FILE_WATCHER_TYPE", "none")
-    os.environ.setdefault("STREAMLIT_SERVER_RUN_ON_SAVE", "false")
-    cmd = [
-        "streamlit", "run", str(ROOT / "app.py"),
-        "--server.port", port,
-        "--server.address", "0.0.0.0",
-        "--server.headless", "true",
-        "--server.fileWatcherType", "none",
-        "--server.runOnSave", "false",
-    ]
-    os.execvp(cmd[0], cmd)
+    launcher = ROOT / "sol_v2_launch_stable.py"
+    if not launcher.exists():
+        raise FileNotFoundError(f"SOL V2 stable launcher missing: {launcher}")
+    os.execv(sys.executable, [sys.executable, str(launcher)])
 
 
 def main() -> None:
