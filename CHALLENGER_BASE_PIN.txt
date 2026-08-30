@@ -1,0 +1,9 @@
+SOL V2 SUPPORT SNAPSHOT
+
+Source repository (READ ONLY): hernandezjh235-sudo/chanllger
+Pinned Challenger commit: 1e696e484ada2fc4cb8a8b71a994e2988bc868
+Pinned at: 2026-08-30T06:03:28Z
+
+The original Challenger repository is not modified by this package.
+The pinned snapshot is used only to populate supporting files around the independent SOL V2 app.py.
+The source Challenger app.py is NEVER copied over SOL V2 app.py.
