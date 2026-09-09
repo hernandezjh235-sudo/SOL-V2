@@ -21663,7 +21663,7 @@ def get_sharpapi_mlb_pitcher_k_lines(player_name, game_home=None, game_away=None
 
     # Based on SharpAPI quick start. Keep league=MLB simple and parse defensively.
 
-    data = safe_get_json(f"{SHARPAPI_BASE}/odds", params={"league": "MLB"}, headers=headers, timeout=20)
+    data = safe_get_json(f"{SHARPAPI_BASE}/odds", params={"league": "MLB"}, headers=headers, timeout=8)
 
     if not data:
 
@@ -21685,7 +21685,7 @@ def get_sharpapi_mlb_pitcher_k_lines(player_name, game_home=None, game_away=None
 
         ]:
 
-            data2 = safe_get_json(f"{SHARPAPI_BASE}/odds", params=params, headers=headers, timeout=20)
+            data2 = safe_get_json(f"{SHARPAPI_BASE}/odds", params=params, headers=headers, timeout=8)
 
             rows.extend(_parse_sharpapi_pitcher_k_payload(data2, player_name, game_home, game_away))
 
@@ -46477,7 +46477,7 @@ def _impl_render_kproj_tab_01(board):
 
     st.subheader("Projection Board")
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
     try:
 
@@ -47847,7 +47847,7 @@ def _impl_render_moneyline_edge_tab_01(board, dates=None):
 
     st.markdown('<div class="section-title-pro">Moneyline Table</div>', unsafe_allow_html=True)
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
 
 
@@ -50410,7 +50410,7 @@ def render_batter_prop_tab(market):
 
     c3.metric("Unders", int((df["Decision"].astype(str) == "UNDER").sum()))
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
     st.markdown("#### Mobile cards")
 
@@ -53522,7 +53522,7 @@ def _impl_render_pitcher_fs_tab_02(board=None):
 
     df = df.sort_values("FS Projection", ascending=False)
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
     _render_fs_cards(df, kind="pitcher")
 
@@ -53544,7 +53544,7 @@ def _impl_render_batter_fs_tab_02():
 
     df = df.sort_values("FS Projection", ascending=False)
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
     _render_fs_cards(df, kind="batter")
 
@@ -61579,7 +61579,7 @@ def _impl_render_moneyline_edge_tab_06(board, dates=None):
 
         with st.expander("Full Moneyline Table", expanded=False):
 
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
         return
 
@@ -65157,7 +65157,7 @@ def _std_debug(msg):
 
 
 
-def _std_json_fixed(url, timeout=20):
+def _std_json_fixed(url, timeout=8):
 
     try:
 
@@ -74229,7 +74229,7 @@ def _impl_render_pitcher_fs_tab_06(board=None):
 
     df = df.sort_values("FS Projection", ascending=False)
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
     render_pitcher_fs_scoring_audit_card(df)
 
@@ -78493,7 +78493,7 @@ def _impl_render_moneyline_edge_tab_07(board, dates=None):
 
     with st.expander("Full Moneyline Simulation Audit", expanded=False):
 
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
     ml_results = load_json(ML_RESULT_LOG, [])
 
@@ -81573,7 +81573,7 @@ def _impl_render_beta_pitching_outs_tab_01(board):
 
     with st.expander("IP Engine Debug", expanded=False):
 
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
 
 
@@ -81626,7 +81626,7 @@ def render_beta_ip_debug_tab(board):
 
         return
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
 
 
@@ -81950,7 +81950,7 @@ def render_beta_k_v5_tab(board):
 
     with st.expander("Full Beta K V5 Audit", expanded=False):
 
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
 
 
@@ -87264,7 +87264,7 @@ def _impl_render_moneyline_edge_tab_08(board, dates=None):
 
         ] if c in df.columns]
 
-        st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+        st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -87724,7 +87724,7 @@ def _impl_render_moneyline_edge_tab_09(board, dates=None):
 
         else:
 
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -89028,7 +89028,7 @@ def _impl_render_moneyline_edge_tab_10(board, dates=None):
 
         df = ml_build_board(board)
 
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
 
 
@@ -89060,7 +89060,7 @@ def _impl_render_moneyline_edge_tab_10(board, dates=None):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -93098,7 +93098,7 @@ def _impl_render_beta_pitching_outs_tab_03(board):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -93445,7 +93445,7 @@ def _impl_render_kproj_tab_03(board):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -94011,7 +94011,7 @@ def _impl_render_kproj_tab_04(board):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -94059,7 +94059,7 @@ def _impl_render_beta_pitching_outs_tab_04(board):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -94611,7 +94611,7 @@ def _impl_render_moneyline_edge_tab_11(board, dates=None):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -95447,7 +95447,7 @@ def _impl_render_first_inning_pitch_count_tab_01(board):
 
     with st.expander("1st Inning Model Debug", expanded=False):
 
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
 
 
@@ -98623,7 +98623,7 @@ def _impl_render_moneyline_edge_tab_14(board, dates=None):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -99145,7 +99145,7 @@ def _impl_render_moneyline_edge_tab_15(board, dates=None):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -100701,7 +100701,7 @@ def _impl_render_kproj_tab_07(board):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -110763,7 +110763,7 @@ def _impl_render_kproj_tab_09(board):
 
                 ] if c in df.columns]
 
-                st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+                st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -113027,7 +113027,7 @@ def _impl_render_beta_pitching_outs_tab_06(board):
 
             ] if c in df.columns]
 
-            st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+            st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
     else:
 
@@ -115050,11 +115050,11 @@ def _impl_render_moneyline_edge_tab_16(board, dates=None):
 
         ] if c in df.columns]
 
-        st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+        st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
 
         with st.expander("Full ML board debug", expanded=False):
 
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
 
     except Exception as e:
 
@@ -139290,9 +139290,9 @@ def _impl_render_moneyline_edge_tab_17(board, dates=None):
         _render_moneyline_visual_cards(df, max_cards=None)
         st.markdown('<div class="section-title-pro">Moneyline Support Audit</div>', unsafe_allow_html=True)
         cols = [c for c in ["Matchup","ML Card Best Play","ML Card Best Play Prob %","ML Official Tier","ML Support State","ML Support Score","ML Support Adjusted Win %","Ballpark","Ballpark Location","ML Weather Summary","ML Starter Edge","ML K Suppression Edge","ML Contact Quality Edge","ML Bullpen Edge","ML Offense Vs Hand Edge","ML Market Agreement","ML Risk Reasons","ML Support Signals","ML Phase22 Original Tier"] if c in df.columns]
-        st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+        st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
         with st.expander("Full ML board debug", expanded=False):
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
     except Exception as e:
         st.info(f"Moneyline edge unavailable: {e}")
 
@@ -141807,7 +141807,7 @@ def _impl_render_beta_pitching_outs_tab_po_v5(board):
             "PO V5 Pitches/IP", "PO V5 Pitches/BF", "PO V5 IP P25", "PO V5 IP P50", "PO V5 IP P75", "PO V5 6+ IP Rate", "PO V5 7+ IP Rate", "PO V5 Early Exit Rate",
             "PO V5 Legacy Active Projection", "PO V5 Real Workload Projection", "PO V5 Real Workload Weight", "PO V3 Capacity IP", "PO V3 Restriction Type", "PO V3 Workload Reason", "PO V5 Version"
         ] if c in df.columns]
-        st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+        st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
     # Keep save/grade/loss-lab tools available without adding a second public card set.
     if _PO_CAL_PREV_RENDER_PO is not None:
         with st.expander("Advanced PO tools · save/grade, loss lab, simulation", expanded=False):
@@ -142098,7 +142098,7 @@ def render_challenger_recency_visible_shadow(board):
             else:
                 st.info("No strong recency trap is detected on the current board. Full audit is still available below.")
             st.markdown("**Full shadow board**")
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
         except Exception as e:
             st.info(f"Recency Trap shadow unavailable: {e}")
 
@@ -143052,7 +143052,7 @@ if callable(_ML_V8_PREV_RENDER):
                 st.markdown("### 🎮 Moneyline Tail Simulation — Support Only")
                 st.caption("5,000 deterministic game paths. Existing Challenger ML probability/side is unchanged; this surfaces starter/bullpen collapse, high-run, blowout, and shootout tails for grading.")
                 cols=[c for c in ["Matchup","ML Final Pick","ML Card Best Play Prob %","ML V8 Sim Pick","ML V8 Canonical Sim %","ML V8 Simulation Support State","ML V8 Representative Score","ML V8 High Run 10+ %","ML V8 Blowout 4+ %","ML V8 Blowout 6+ %","ML V8 Shootout %","ML V8 Away Pitching Collapse Risk","ML V8 Home Pitching Collapse Risk","ML V8 Game Volatility Score","ML V8 Volatility Label"] if c in df.columns]
-                st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+                st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
         except Exception as exc:
             st.info(f"ML tail simulation support unavailable: {exc}")
 
@@ -147109,17 +147109,26 @@ except Exception:
 #   - API key is read from PROP_LINE_API_KEY / st.secrets / temporary sidebar input.
 #     It is never hard-coded and never displayed.
 # ============================================================================
-PROPLINE_PO_VERSION = "SOL_V2_V15_PROPLINE_PO_LINES_ONLY_2026_09_09"
+PROPLINE_PO_VERSION = "SOL_V2_V18_PROPLINE_PO_MANUAL_SAFE_NO_HARDCODE_2026_09_09"
 PROPLINE_PO_MARKET = "pitcher_outs"
 PROPLINE_PO_BASE = "https://api.prop-line.com/v1"
 PROPLINE_PO_DEFAULT_PREFERRED_BOOKS = "underdog,prizepicks,draftkings,fanduel,fanatics,betonlineag,lowvig,betus,bovada,pinnacle,kalshi,betmgm"
+PROPLINE_PO_AUTO_DEFAULT = str(os.environ.get("PROPLINE_PO_ENABLED", "0")).strip().lower() in {"1", "true", "yes", "on"}
 
 try:
     with st.sidebar.expander("PropLine PO lines", expanded=False):
         st.caption("Pitching Outs only. Strikeouts stay on the original app pull.")
-        st.text_input("Optional PropLine API key", type="password", key="propline_api_key_ui", help="Recommended: set PROP_LINE_API_KEY in Railway variables instead.")
+        st.caption("Safe mode: API key is read from Railway env var PROP_LINE_API_KEY only. It is never hard-coded or shown.")
+        st.toggle("Load PropLine PO fallback this session", value=PROPLINE_PO_AUTO_DEFAULT, key="propline_po_enabled", help="Leave OFF while loading the main K board. Turn ON only when you want Pitching Outs lines/odds.")
 except Exception:
     pass
+
+
+def _plpo_is_enabled():
+    try:
+        return bool(st.session_state.get("propline_po_enabled", PROPLINE_PO_AUTO_DEFAULT))
+    except Exception:
+        return bool(PROPLINE_PO_AUTO_DEFAULT)
 
 
 def _plpo_secret(name, default=""):
@@ -147138,12 +147147,6 @@ def _plpo_secret(name, default=""):
                 return str(sec.get(name))
         except Exception:
             pass
-    except Exception:
-        pass
-    try:
-        v = st.session_state.get("propline_api_key_ui")
-        if v not in (None, ""):
-            return str(v)
     except Exception:
         pass
     return default
@@ -147233,7 +147236,7 @@ def _plpo_fetch_events_cached(api_key_tail_marker, full_key):
     if not full_key:
         return {"status": "MISSING_KEY", "events": [], "message": "Set PROP_LINE_API_KEY to use PropLine PO fallback."}
     try:
-        r = requests.get(f"{PROPLINE_PO_BASE}/sports/baseball_mlb/events", headers=_plpo_headers(full_key), timeout=20)
+        r = requests.get(f"{PROPLINE_PO_BASE}/sports/baseball_mlb/events", headers=_plpo_headers(full_key), timeout=8)
         quota = {
             "daily_limit": r.headers.get("X-Daily-Limit") or r.headers.get("X-RateLimit-Limit"),
             "daily_remaining": r.headers.get("X-Daily-Remaining") or r.headers.get("X-RateLimit-Remaining"),
@@ -147256,7 +147259,7 @@ def _plpo_fetch_event_odds_cached(event_id, api_key_tail_marker, full_key, books
         params = {"markets": PROPLINE_PO_MARKET, "includeBookIds": "true", "includeLinks": "true"}
         if books:
             params["bookmakers"] = books
-        r = requests.get(f"{PROPLINE_PO_BASE}/sports/baseball_mlb/events/{event_id}/odds", params=params, headers=_plpo_headers(full_key), timeout=20)
+        r = requests.get(f"{PROPLINE_PO_BASE}/sports/baseball_mlb/events/{event_id}/odds", params=params, headers=_plpo_headers(full_key), timeout=8)
         quota = {
             "daily_limit": r.headers.get("X-Daily-Limit") or r.headers.get("X-RateLimit-Limit"),
             "daily_remaining": r.headers.get("X-Daily-Remaining") or r.headers.get("X-RateLimit-Remaining"),
@@ -147432,9 +147435,11 @@ def _plpo_all_pitcher_outs_cached(full_key, books, max_events):
 
 
 def _plpo_get_all():
+    if not _plpo_is_enabled():
+        return {"status": "DISABLED", "players": {}, "pairs": [], "rows": [], "message": "PropLine PO safe mode OFF. Turn on sidebar toggle only when loading Pitching Outs."}
     key = _plpo_api_key()
     books = _plpo_secret("PROPLINE_PO_BOOKMAKERS", "").strip()
-    max_events = _plpo_int_env("PROPLINE_PO_MAX_EVENTS", 36, 1, 80)
+    max_events = _plpo_int_env("PROPLINE_PO_MAX_EVENTS", 14, 1, 24)
     return _plpo_all_pitcher_outs_cached(key, books, max_events)
 
 
@@ -147640,8 +147645,10 @@ def _plpo_render_status_box(df):
         b.metric("PO matches", matched)
         c.metric("Fallback lines used", line_fallback)
         d.metric("API remaining", quota.get("daily_remaining") or "—")
-        if status == "MISSING_KEY":
-            st.warning("PropLine PO fallback is installed but no key is set. Add PROP_LINE_API_KEY in Railway Variables, or use the temporary sidebar input.")
+        if status == "DISABLED":
+            st.info("PropLine PO safe mode is OFF. Main board can load normally. Turn ON the sidebar toggle only inside Pitching Outs when you want lines/odds.")
+        elif status == "MISSING_KEY":
+            st.warning("PropLine PO fallback is installed but no Railway key is set. Add PROP_LINE_API_KEY in Railway Variables.")
         elif status not in {"SUCCESS", "NO_PITCHER_OUTS"}:
             st.caption(f"PropLine status: {status} · {msg}")
     except Exception as exc:
@@ -147656,7 +147663,7 @@ def _impl_render_beta_pitching_outs_tab_propline_v15(board):
     except Exception as exc:
         st.info(f"Pitching Outs board unavailable: {exc}")
         df = pd.DataFrame()
-    st.markdown('<div class="section-title-pro">🔥 SOL V2 Pitching Outs · V15 PropLine Line/Odds Safe Fallback</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title-pro">🔥 SOL V2 Pitching Outs · V18 PropLine Line/Odds Safe Fallback</div>', unsafe_allow_html=True)
     st.caption("PropLine is used ONLY for Pitching Outs lines/odds. Strikeout props and K projections keep the original app pull. If the old Underdog line works, it stays; PropLine just enriches odds. If it misses, PropLine pitcher_outs consensus fills the line.")
     if not isinstance(df, pd.DataFrame) or df.empty:
         _plpo_render_status_box(df)
@@ -147670,16 +147677,16 @@ def _impl_render_beta_pitching_outs_tab_propline_v15(board):
     plays = df.get("PO V5 Tier", pd.Series(dtype=str)).astype(str).str.contains("OFFICIAL|PLAYABLE", regex=True).sum() if "PO V5 Tier" in df.columns else 0
     c4.metric("Official / Playable", int(plays))
     _po_render_player_cards(df, board=board)
-    with st.expander("Pitching Outs V15 · PropLine lines and odds", expanded=True):
+    with st.expander("Pitching Outs V18 · PropLine lines and odds", expanded=True):
         cols = [c for c in [
             "Pitcher", "Matchup", "UD Line", "PO Line Provider", "PO Line Fallback Used", "PropLine Line", "PO Line Difference vs PropLine",
             "PO V5 Final Projection", "PO V5 Final Side", "PO V5 Final Edge", "PO V5 Final Probability %", "PO V5 Tier",
             "PropLine Primary Book", "PropLine Over Odds", "PropLine Under Odds", "PropLine Best Over Odds", "PropLine Best Under Odds",
             "PropLine Books", "PropLine Available Lines", "PropLine Event", "PropLine Match Score", "PropLine PO Status", "PropLine Daily Remaining"
         ] if c in df.columns]
-        st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
-    with st.expander("Pitching Outs V15 full audit", expanded=False):
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe((df[cols] if cols else df).astype(str), use_container_width=True, hide_index=True)
+    with st.expander("Pitching Outs V18 full audit", expanded=False):
+        st.dataframe(df.astype(str), use_container_width=True, hide_index=True)
     if _PO_CAL_PREV_RENDER_PO is not None:
         with st.expander("Advanced PO tools · save/grade, loss lab, simulation", expanded=False):
             _PO_CAL_PREV_RENDER_PO(board)
@@ -151014,7 +151021,7 @@ if globals().get("full_live_audit_enabled", False):
 
 
 try:
-    st.sidebar.success("✅ SOL V2 V17 ACTIVE — one main decision locked across copy/paste + player cards")
+    st.sidebar.success("✅ SOL V2 V18 ACTIVE — one decision cards + PropLine PO safe manual mode, no hardcoded key")
     st.caption("✅ SOL V2 V17 active: copy/paste, PROJ K side, and Final Decision box now use the same SOL V2 main decision. No more OVER/UNDER mismatch on one card.")
 except Exception:
     pass
