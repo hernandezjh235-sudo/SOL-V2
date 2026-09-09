@@ -105051,11 +105051,17 @@ def _impl_kclean_final_proj_line_01(row):
 
     proj = _kclean_num(_kclean_pick(row, [
 
-        "Elite Ace Clear-Line Projection",
+        # SOL V2 primary visible outputs first so cards/table/copy use the same number.
+
+        "SOL V2 Card Main Projection", "SOL V2 V14 Projection", "SOL V2 Adjusted Projection",
+
+        "K V12 Adjusted Projection", "Line-Aware Smart Final K Projection",
 
         "K PROJ", "Final K Projection", "Official K PROJ",
 
-        "Matchup Intelligence Final K Projection", "Line-Aware Smart Final K Projection",
+        "Elite Ace Clear-Line Projection",
+
+        "Matchup Intelligence Final K Projection",
 
         "Winning File K Projection", "APP97 True K Projection", "APP98 Loss Target Projection",
 
@@ -105452,6 +105458,16 @@ def _kclean_copy_paste_slate(df, include_thin=False, force_all_players_ou=False)
 
                 row = rr.to_dict()
 
+                # V17: copy/paste uses the same one-decision sync as player cards.
+
+                try:
+
+                    row = _sv2v16_sync_row_to_copy_decision(row)
+
+                except Exception:
+
+                    pass
+
                 proj, line = _kclean_final_proj_line(row)
 
                 if not np.isfinite(line) or not np.isfinite(proj):
@@ -105518,7 +105534,15 @@ def _kclean_card_decision(row):
 
     proj, line = _kclean_final_proj_line(row)
 
-    authoritative = str(_kclean_pick(row, ["UB Final Decision", "Final Authoritative Decision"], "") or "").upper()
+    # One-card-decision lock: match the same SOL V2 side used by the copy/paste slate.
+
+    authoritative = str(_kclean_pick(row, [
+
+        "SOL V2 Card Main Side", "SOL V2 V14 Side", "SOL V2 Adjusted Side", "K V12 Adjusted Side",
+
+        "Line-Aware Smart Decision", "Decision", "UB Final Decision", "Undefeated Beta Side", "Final Authoritative Decision"
+
+    ], "") or "").upper()
 
     side = authoritative if authoritative in {"OVER", "UNDER", "PASS"} else _kclean_side_label(row)
 
@@ -108327,6 +108351,174 @@ def _kclean_render_app88_audit_helpers(df, board):
 
 
 
+
+
+# =============================================================================
+# SOL V2 V17 — ONE DECISION CARD/COPY SYNC
+# Purpose: the compact player card must show ONE main decision only — the same
+# side/projection that appears in the SOL V2 copy/paste slate.  This prevents
+# the top projection block from saying UNDER while the Final Decision box says
+# OVER (or vice versa).  This is a UI/output binding fix only; PropLine remains
+# Pitching Outs only and K projection logic is not re-modeled here.
+# =============================================================================
+SOL_V2_V16_CARD_SYNC_VERSION = "SOL_V2_V17_ONE_DECISION_CARDS_COPY_SYNC_2026_09_09"
+
+
+def _sv2v16_card_num(v, default=np.nan):
+    try:
+        if v in (None, "", "—", "-", "None", "nan", "NaN", "NO LINE", "NO_UD_LINE"):
+            return default
+        x = float(str(v).replace("%", "").replace(",", "").strip())
+        return x if np.isfinite(x) else default
+    except Exception:
+        return default
+
+
+def _sv2v16_card_pick(row, keys, default=""):
+    r = row or {}
+    for k in keys:
+        try:
+            v = r.get(k)
+            if v not in (None, "", "—", "-", "nan", "NaN"):
+                return v
+        except Exception:
+            pass
+    return default
+
+
+def _sv2v16_side_from_projection(proj, line):
+    p = _sv2v16_card_num(proj, np.nan)
+    l = _sv2v16_card_num(line, np.nan)
+    if not (np.isfinite(p) and np.isfinite(l)):
+        return ""
+    if p > l:
+        return "OVER"
+    if p < l:
+        return "UNDER"
+    return "UNDER"
+
+
+def _sv2v16_sync_row_to_copy_decision(row):
+    """Return a copy of row with all card decision aliases aligned.
+
+    Primary order follows the active SOL V2 output: V14 third-file projection,
+    then V13/V12 adjusted projection, then the current K-clean aliases.  Side is
+    derived from the same projection+line math used in the copy slate.
+    """
+    if not isinstance(row, dict):
+        try:
+            row = row.to_dict()
+        except Exception:
+            return row
+    out = dict(row)
+    line = _sv2v16_card_num(_sv2v16_card_pick(out, [
+        "UD/Line", "Line", "Underdog Line", "Strikeout Line", "line", "Canonical Line"
+    ], ""), np.nan)
+
+    # Main side comes from the active SOL/copy fields first. If that side exists,
+    # use the first projection field that mathematically supports the same side.
+    # This prevents an old APP97/K-clean projection from fighting the current copy decision.
+    explicit_side = str(_sv2v16_card_pick(out, [
+        "SOL V2 Card Main Side", "SOL V2 V14 Side", "SOL V2 Adjusted Side", "K V12 Adjusted Side",
+        "Line-Aware Smart Decision", "Decision", "UB Final Decision", "Undefeated Beta Side",
+        "Final Decision Side", "Canonical Side", "pick_side"
+    ], "")).upper()
+    if "OVER" in explicit_side:
+        explicit_side = "OVER"
+    elif "UNDER" in explicit_side:
+        explicit_side = "UNDER"
+    else:
+        explicit_side = ""
+
+    proj_candidates = []
+    for key in [
+        "SOL V2 Card Main Projection", "SOL V2 V14 Projection", "SOL V2 Adjusted Projection",
+        "K V12 Adjusted Projection", "Line-Aware Smart Final K Projection",
+        "Undefeated Beta Projection", "UB Final Projection", "UB Biological Projection",
+        "APP100 Projected Strikeouts", "Winning File K Projection", "File33 Matched K Projection", "App70 Calibrated K PROJ",
+        "K PROJ", "Final K Projection", "Official K PROJ", "Canonical Final K Projection",
+        "Final Resolved Projection", "APP97 True K Projection", "Projection", "projection"
+    ]:
+        val = _sv2v16_card_num(out.get(key), np.nan)
+        if np.isfinite(val):
+            proj_candidates.append((key, float(val)))
+
+    proj_source = ""
+    proj = np.nan
+    if np.isfinite(line) and explicit_side in {"OVER", "UNDER"}:
+        for key, val in proj_candidates:
+            if _sv2v16_side_from_projection(val, line) == explicit_side:
+                proj_source, proj = key, val
+                break
+    if not np.isfinite(proj) and proj_candidates:
+        proj_source, proj = proj_candidates[0]
+
+    if not (np.isfinite(proj) and np.isfinite(line)):
+        out["SOL V2 Card Main Decision Sync"] = "SKIPPED_MISSING_PROJ_OR_LINE"
+        out["SOL V2 Card Sync Version"] = SOL_V2_V16_CARD_SYNC_VERSION
+        return out
+
+    side = explicit_side if explicit_side in {"OVER", "UNDER"} and _sv2v16_side_from_projection(proj, line) == explicit_side else _sv2v16_side_from_projection(proj, line)
+    edge = round(float(proj) - float(line), 3)
+    if side not in {"OVER", "UNDER"}:
+        out["SOL V2 Card Main Decision Sync"] = "SKIPPED_NO_SIDE"
+        out["SOL V2 Card Sync Version"] = SOL_V2_V16_CARD_SYNC_VERSION
+        return out
+
+    out["SOL V2 Card Main Projection"] = round(float(proj), 3)
+    out["SOL V2 Card Main Projection Source"] = proj_source
+    out["SOL V2 Card Main Side"] = side
+    out["SOL V2 Card Main Edge"] = edge
+    out["SOL V2 Card Main Decision Sync"] = "ACTIVE_MATCHES_COPY_PASTE"
+    out["SOL V2 Card Sync Version"] = SOL_V2_V16_CARD_SYNC_VERSION
+
+    # Projection aliases used by the compact player card, main table, and copy helpers.
+    for k in [
+        "projection", "Projection", "K PROJ", "Official K PROJ", "Final K Projection",
+        "Line-Aware Smart Final K Projection", "Final Resolved Projection", "Canonical Final K Projection",
+        "APP100 Projected Strikeouts", "Undefeated Beta Projection", "UB Final Projection",
+        "Challenger K VNext Projection", "SOL V2 Adjusted Projection", "K V12 Adjusted Projection"
+    ]:
+        out[k] = round(float(proj), 2)
+
+    # Decision aliases.  This is the important part for the card: UB/Sports Brain
+    # summary can no longer print the opposite side from the top projection block.
+    for k in [
+        "Decision", "Line-Aware Smart Decision", "Canonical Decision", "Canonical Side",
+        "Final Decision Side", "Final Resolved Side", "pick_side", "K Sim Pick",
+        "Sports Brain Side", "Sports Brain Direction", "Sports Brain Decision",
+        "UB Final Decision", "UB Final Side", "Undefeated Beta Side", "Undefeated Beta Decision",
+        "Model Lean", "Side", "Projected Side", "Public Decision Side", "Line-Aware Smart Side"
+    ]:
+        out[k] = side
+
+    for k in [
+        "edge_ks", "Official K Edge", "Line-Aware Smart Edge", "Canonical Edge",
+        "Edge", "K Edge", "Proj Edge", "Projection Edge", "Edge Gap", "Lean Gap",
+        "SOL V2 V14 Edge", "SOL V2 Card Main Edge"
+    ]:
+        out[k] = round(float(edge), 2)
+
+    # Keep probability readable for the current side when available.
+    prob_keys = ["P(OVER Today's Line)", "UB P(Over Line) %", "Over Sim %"] if side == "OVER" else ["P(UNDER Today's Line)", "UB P(Under Line) %", "Under Sim %"]
+    prob = _sv2v16_card_num(_sv2v16_card_pick(out, ["UB Final Probability %", "Final Decision Confidence %", "Confidence %", "K Sim Current Side Prob %"] + prob_keys, ""), np.nan)
+    if np.isfinite(prob):
+        if abs(prob) <= 1:
+            prob *= 100.0
+        for k in ["UB Final Probability %", "Final Decision Confidence %", "Confidence %", "K Sim Current Side Prob %", "Current Side Prob %"]:
+            out[k] = round(float(prob), 1)
+
+    return out
+
+
+def _sv2v16_sync_df_to_copy_decision(df):
+    try:
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            return df
+        return pd.DataFrame([_sv2v16_sync_row_to_copy_decision(r.to_dict()) for _, r in df.iterrows()])
+    except Exception:
+        return df
+
 def _kclean_render_player_cards(df, board=None, limit=None):
 
     try:
@@ -108336,6 +108528,16 @@ def _kclean_render_player_cards(df, board=None, limit=None):
             return
 
         d = df.copy()
+
+        # V16 card sync: force card rows to the same SOL V2 main decision used by copy/paste.
+
+        try:
+
+            d = _sv2v16_sync_df_to_copy_decision(d)
+
+        except Exception:
+
+            pass
 
         if "UD/Line" not in d.columns:
 
@@ -108412,6 +108614,16 @@ def _kclean_render_player_cards(df, board=None, limit=None):
         for _, rr in d.iterrows():
 
             row = rr.to_dict()
+
+            # V16: one authoritative card side/projection, matching the copy/paste slate.
+
+            try:
+
+                row = _sv2v16_sync_row_to_copy_decision(row)
+
+            except Exception:
+
+                pass
 
             raw_pitcher = str(row.get("Pitcher") or row.get("pitcher") or "")
 
@@ -108922,7 +109134,7 @@ def _kclean_render_player_cards(df, board=None, limit=None):
 
                 _brain_risk = html.escape(str(row.get("Brain Main Risk") or "No major structural risk detected.")[:700])
 
-                _final_pick_raw = str(row.get("UB Final Decision") or row.get("Undefeated Beta Side") or "PASS").upper()
+                _final_pick_raw = str(row.get("SOL V2 Card Main Side") or row.get("SOL V2 V14 Side") or row.get("SOL V2 Adjusted Side") or row.get("K V12 Adjusted Side") or row.get("Line-Aware Smart Decision") or row.get("UB Final Decision") or row.get("Undefeated Beta Side") or "PASS").upper()
 
                 _final_pick = html.escape(_final_pick_raw)
 
@@ -108930,7 +109142,7 @@ def _kclean_render_player_cards(df, board=None, limit=None):
 
                 _final_support = html.escape(str(row.get("UB Final Support State") or _ub_play))
 
-                _final_reason = html.escape(str(row.get("UB Final Decision Reason") or row.get("Undefeated Beta Decision Reason") or "")[:500])
+                _final_reason = html.escape(str(row.get("SOL V2 V14 Guard Reason") or row.get("SOL V2 V13 Reason") or row.get("SOL V2 Card Main Decision Sync") or row.get("UB Final Decision Reason") or row.get("Undefeated Beta Decision Reason") or "")[:500])
 
                 # UI-ONLY: PASS is a playability/risk status, not an opposite side.
                 # Keep the mathematical direction visible so users can distinguish
@@ -146331,6 +146543,1156 @@ except Exception:
 
 
 
+
+
+# =============================================================================
+# SOL V2 V14 — THIRD FILE PRESERVE/RESCUE GUARD
+# 2026-09-08
+#
+# Purpose for 3-way testing:
+#   Challenger control vs SOL V2 V13 aggressive rescue vs SOL V2 V14 guarded rescue.
+#
+# What V14 does differently from V13:
+#   1) Keeps V13's useful rescue behavior.
+#   2) Adds preserve-win guards for V13 flips that look thin/fragile.
+#   3) Adds targeted second-pass rules for yesterday's remaining loss shapes:
+#        - near-line UNDER with ceiling pressure (Sandoval/Bubba type)
+#        - low-line UNDER with workload + K-skill pressure (Painter type)
+#        - high-line thin OVER conversion risk (Bibee type)
+#        - weak/low-confidence OVER on modest K environment (Wacha/Freddy/Kremer type)
+#   4) Hard-binds the V14 projection into the visible board/cards/copy/export.
+#
+# This is a TEST file. Challenger is not edited. V13 fields are preserved for A/B.
+# =============================================================================
+SOL_V2_V14_GUARD_VERSION = "SOL_V2_V14_THIRD_FILE_PRESERVE_RESCUE_GUARD_2026_09_08"
+
+
+def _sv2v14_num(v, default=None):
+    try:
+        if v is None:
+            return default
+        if isinstance(v, str):
+            s = v.strip().replace('%', '').replace(',', '')
+            if s == '' or s.lower() in {'nan', 'none', 'null', '—', '-'}:
+                return default
+            return float(s)
+        return float(v)
+    except Exception:
+        return default
+
+
+def _sv2v14_pct(v, default=None):
+    x = _sv2v14_num(v, default)
+    if x is None:
+        return default
+    try:
+        x = float(x)
+        # Most app fields are stored as 0.21 or 21.0 interchangeably.
+        if abs(x) <= 1.0:
+            x *= 100.0
+        return x
+    except Exception:
+        return default
+
+
+def _sv2v14_pick(row, keys, default=None):
+    r = row or {}
+    for k in keys:
+        try:
+            if k in r and r.get(k) not in (None, '', '—', '-'):
+                return r.get(k)
+        except Exception:
+            pass
+    return default
+
+
+def _sv2v14_side(proj, line):
+    p = _sv2v14_num(proj, None)
+    l = _sv2v14_num(line, None)
+    if p is None or l is None:
+        return ''
+    return 'OVER' if p > l else 'UNDER' if p < l else 'PASS'
+
+
+def _sv2v14_clip(x, lo, hi):
+    try:
+        return max(float(lo), min(float(hi), float(x)))
+    except Exception:
+        return 0.0
+
+
+def _sv2v14_max_present(*vals):
+    good = []
+    for v in vals:
+        x = _sv2v14_pct(v, None)
+        if x is not None:
+            good.append(float(x))
+    return max(good) if good else None
+
+
+def _sv2v14_min_present(*vals):
+    good = []
+    for v in vals:
+        x = _sv2v14_pct(v, None)
+        if x is not None:
+            good.append(float(x))
+    return min(good) if good else None
+
+
+def _sv2v14_feature_pack(row):
+    r = row or {}
+    pitcher_k = _sv2v14_max_present(
+        _sv2v14_pick(r, ['Official Savant K%', 'Savant Custom K%', 'APP100 Pitcher K%', 'APP97 Live Pitcher K%', 'Canonical Pitcher K%', 'Pitcher K%', 'K%']),
+        _sv2v14_pick(r, ['APP100 Pitcher K/9'])  # K/9 is not a percent, handled separately below too
+    )
+    # If K/9 accidentally became the max percent, undo by preferring real K% keys first.
+    real_pitcher_k = _sv2v14_max_present(
+        _sv2v14_pick(r, ['Official Savant K%', 'Savant Custom K%', 'APP100 Pitcher K%', 'APP97 Live Pitcher K%', 'Canonical Pitcher K%', 'Pitcher K%', 'K%'])
+    )
+    if real_pitcher_k is not None:
+        pitcher_k = real_pitcher_k
+
+    k9 = _sv2v14_num(_sv2v14_pick(r, ['APP100 Pitcher K/9', 'Pitcher K/9', 'K/9']), None)
+    whiff = _sv2v14_max_present(_sv2v14_pick(r, ['Official Savant Whiff%', 'Savant Custom Whiff%', 'APP100 Whiff%', 'Whiff%', 'Pitch Whiff%']))
+    csw = _sv2v14_max_present(_sv2v14_pick(r, ['Official Savant CSW%', 'APP100 CSW%', 'CSW%']))
+    chase = _sv2v14_max_present(_sv2v14_pick(r, ['Official Savant Chase%', 'Savant Custom Chase%', 'APP100 Chase%', 'Chase%']))
+
+    opp_hand = _sv2v14_max_present(
+        _sv2v14_pick(r, ['Opponent K% vs Pitcher Hand', 'Team K% Season vs Hand', 'Opp K% vs RHP Official', 'Opp K% vs LHP Official', 'Canonical Opponent K%']),
+        _sv2v14_pick(r, ['Team K% L5 vs Hand', 'Team K% L10 vs Hand', 'Team K% L15 vs Hand']),
+        _sv2v14_pick(r, ['APP97 Opponent K Environment', 'APP88 Batter Lineup K%', 'APP100 Avg Batter K%', 'Savant Raw Order-Weighted K%'])
+    )
+    opp_low = _sv2v14_min_present(
+        _sv2v14_pick(r, ['Opponent K% vs Pitcher Hand', 'Team K% Season vs Hand', 'Canonical Opponent K%']),
+        _sv2v14_pick(r, ['Team K% L5 vs Hand', 'Team K% L10 vs Hand']),
+        _sv2v14_pick(r, ['APP97 Opponent K Environment', 'APP88 Batter Lineup K%', 'APP100 Avg Batter K%', 'Savant Raw Order-Weighted K%'])
+    )
+    lineup_k = _sv2v14_max_present(_sv2v14_pick(r, ['APP88 Batter Lineup K%', 'APP100 Avg Batter K%', 'Savant Raw Order-Weighted K%', 'Savant Raw Simple K%']))
+
+    bf = _sv2v14_num(_sv2v14_pick(r, ['APP100 Projected BF', 'Canonical Expected BF', 'Projected BF', 'Expected BF', 'BF PROJ']), None)
+    ip = _sv2v14_num(_sv2v14_pick(r, ['IP Floor', 'IP PROJ', 'Projected IP', 'IP Projection', 'Proj IP', 'APP100 Projected IP']), None)
+    prob = _sv2v14_pct(_sv2v14_pick(r, ['Confidence %', 'Final Decision Confidence %', 'K Sim Current Side Prob %', 'K Sim True Prob %']), None)
+    ceiling = _sv2v14_num(_sv2v14_pick(r, ['K Ceiling Read', 'Ceiling K', 'P90 K', 'P75 K']), None)
+
+    return {
+        'pitcher_k': pitcher_k,
+        'k9': k9,
+        'whiff': whiff,
+        'csw': csw,
+        'chase': chase,
+        'opp_hand': opp_hand,
+        'opp_low': opp_low,
+        'lineup_k': lineup_k,
+        'bf': bf,
+        'ip': ip,
+        'prob': prob,
+        'ceiling': ceiling,
+    }
+
+
+def _sv2v14_bool(expr):
+    try:
+        return bool(expr)
+    except Exception:
+        return False
+
+
+def _sv2v14_scores(row, raw, v13_adj, line):
+    f = _sv2v14_feature_pack(row)
+    raw_side = _sv2v14_side(raw, line)
+    v13_side = _sv2v14_side(v13_adj, line)
+    raw_edge = float(raw) - float(line)
+    v13_edge = float(v13_adj) - float(line)
+    flip = raw_side in {'OVER', 'UNDER'} and v13_side in {'OVER', 'UNDER'} and raw_side != v13_side
+
+    pk = f.get('pitcher_k')
+    whiff = f.get('whiff')
+    csw = f.get('csw')
+    opp = f.get('opp_hand')
+    opp_low = f.get('opp_low')
+    lineup = f.get('lineup_k')
+    bf = f.get('bf')
+    ip = f.get('ip')
+    prob = f.get('prob')
+    k9 = f.get('k9')
+    ceiling = f.get('ceiling')
+
+    def ge(v, t): return v is not None and float(v) >= float(t)
+    def le(v, t): return v is not None and float(v) <= float(t)
+
+    high_k_skill = ge(pk, 24.0) or ge(whiff, 27.0) or ge(csw, 28.0) or ge(k9, 9.0)
+    elite_k_skill = ge(pk, 28.0) or ge(whiff, 31.0) or ge(csw, 30.0) or ge(k9, 10.5)
+    low_k_skill = le(pk, 21.0) and (whiff is None or whiff <= 24.0) and (k9 is None or k9 <= 7.8)
+    high_opp_pressure = ge(opp, 23.0) or ge(lineup, 23.0)
+    low_opp_pressure = le(opp_low, 21.2) or (le(opp, 21.2) and (lineup is None or lineup <= 21.5))
+    full_workload = ge(bf, 21.5) or ge(ip, 5.4)
+    thin_v13_edge = abs(v13_edge) <= 0.65
+    near_line_under = v13_side == 'UNDER' and (float(line) - float(v13_adj)) <= 0.55
+    reachable_under = v13_side == 'UNDER' and (float(line) - float(v13_adj)) <= 1.45
+    thin_over = v13_side == 'OVER' and 0 < v13_edge <= 0.75
+    low_conf = prob is not None and prob <= 55.5
+    medium_conf = prob is not None and prob <= 61.0
+
+    rescue_score = 0
+    break_score = 0
+    notes = []
+
+    if flip:
+        if raw_side == 'UNDER' and v13_side == 'OVER':
+            if high_opp_pressure:
+                rescue_score += 3; notes.append('rescue:opp_k_pressure')
+            if high_k_skill:
+                rescue_score += 3; notes.append('rescue:k_skill_support')
+            if full_workload:
+                rescue_score += 1; notes.append('rescue:workload_ok')
+            if abs(raw_edge) <= 0.75:
+                rescue_score += 1; notes.append('rescue:thin_raw_under')
+            if float(line) <= 4.5:
+                rescue_score += 1; notes.append('rescue:low_line')
+            if float(line) >= 5.5 and thin_over and not elite_k_skill and not high_opp_pressure:
+                break_score += 5; notes.append('break_risk:high_line_thin_over')
+            if low_opp_pressure and not elite_k_skill:
+                break_score += 3; notes.append('break_risk:contact_env')
+            if low_conf and thin_over:
+                break_score += 2; notes.append('break_risk:low_conf_flip_over')
+        elif raw_side == 'OVER' and v13_side == 'UNDER':
+            if low_k_skill or low_opp_pressure:
+                rescue_score += 3; notes.append('rescue:over_suppression')
+            if abs(raw_edge) <= 0.60:
+                rescue_score += 1; notes.append('rescue:thin_raw_over')
+            if medium_conf:
+                rescue_score += 1; notes.append('rescue:not_strong_over')
+            if near_line_under and (high_k_skill or high_opp_pressure or full_workload):
+                break_score += 5; notes.append('break_risk:near_line_under_ceiling')
+            if reachable_under and float(line) <= 4.5 and full_workload and (high_k_skill or high_opp_pressure):
+                break_score += 4; notes.append('break_risk:low_line_under_workload_ceiling')
+            if abs(float(v13_adj) - float(raw)) < 0.35 and (high_k_skill or full_workload):
+                break_score += 2; notes.append('break_risk:tiny_delta_side_cross')
+            if abs(raw_edge) >= 0.50 and (high_k_skill or high_opp_pressure):
+                break_score += 2; notes.append('break_risk:raw_over_support')
+
+    # Second-pass loss-target logic even when raw/v13 do not technically flip.
+    second_pass = []
+    if v13_side == 'UNDER':
+        if near_line_under and full_workload and (high_k_skill or high_opp_pressure):
+            second_pass.append(('FALSE_UNDER_NEAR_LINE_CEILING', 4))
+        if reachable_under and float(line) <= 4.5 and full_workload and (elite_k_skill or high_opp_pressure):
+            second_pass.append(('LOW_LINE_UNDER_CEILING_PRESSURE', 4))
+        if ceiling is not None and float(ceiling) >= float(line) + 2.5 and near_line_under and (high_k_skill or high_opp_pressure):
+            second_pass.append(('CEILING_OVER_LINE_UNDER_RISK', 2))
+    elif v13_side == 'OVER':
+        if float(line) >= 5.5 and thin_over and low_conf and low_opp_pressure and not elite_k_skill:
+            second_pass.append(('HIGH_LINE_THIN_OVER_CONVERSION_RISK', 5))
+        if float(line) <= 4.5 and medium_conf and low_opp_pressure and not high_k_skill and v13_edge <= 0.85:
+            second_pass.append(('LOW_OPP_WEAK_OVER_RISK', 5))
+        if float(line) <= 4.5 and low_conf and not elite_k_skill and (ip is not None and ip < 5.05):
+            second_pass.append(('LOW_CONF_OVER_SHORT_WORKLOAD_RISK', 4))
+        if float(line) <= 4.5 and low_conf and low_opp_pressure and v13_edge > 1.25:
+            second_pass.append(('BIG_OVER_LOW_CONF_CONTACT_TRAP', 4))
+
+    return {
+        'features': f,
+        'raw_side': raw_side,
+        'v13_side': v13_side,
+        'raw_edge': raw_edge,
+        'v13_edge': v13_edge,
+        'flip': flip,
+        'rescue_score': rescue_score,
+        'break_score': break_score,
+        'second_pass': second_pass,
+        'notes': notes,
+    }
+
+
+def _sv2v14_force_aliases(base, final_proj, line, action, reason, scores):
+    final_proj = round(float(final_proj), 3)
+    side = _sv2v14_side(final_proj, line)
+    edge = round(float(final_proj) - float(line), 3)
+
+    # Preserve V13 for comparison before hard overwrite.
+    base['SOL V2 V14 Active'] = True
+    base['SOL V2 V14 Version'] = SOL_V2_V14_GUARD_VERSION
+    base['SOL V2 V14 Projection'] = final_proj
+    base['SOL V2 V14 Side'] = side
+    base['SOL V2 V14 Edge'] = edge
+    base['SOL V2 V14 Action'] = action
+    base['SOL V2 V14 Guard Reason'] = reason[:500]
+    base['SOL V2 V14 Rescue Score'] = scores.get('rescue_score')
+    base['SOL V2 V14 Break Score'] = scores.get('break_score')
+    base['SOL V2 V14 Raw Side'] = scores.get('raw_side')
+    base['SOL V2 V14 V13 Side'] = scores.get('v13_side')
+    base['SOL V2 V14 V13 Projection'] = round(float(_sv2v14_num(base.get('SOL V2 Adjusted Projection'), final_proj) or final_proj), 3)
+    try:
+        base['SOL V2 V14 Feature Snapshot'] = (
+            f"pk={scores.get('features',{}).get('pitcher_k')} | "
+            f"whiff={scores.get('features',{}).get('whiff')} | "
+            f"csw={scores.get('features',{}).get('csw')} | "
+            f"opp={scores.get('features',{}).get('opp_hand')} | "
+            f"bf={scores.get('features',{}).get('bf')} | "
+            f"ip={scores.get('features',{}).get('ip')}"
+        )
+    except Exception:
+        pass
+
+    # Hard visible aliases for third-file testing.
+    for k in [
+        'projection', 'Projection', 'K PROJ', 'Official K PROJ', 'Final K Projection',
+        'Challenger K VNext Projection', 'Line-Aware Smart Final K Projection',
+        'Final Resolved Projection', 'Canonical Final K Projection', 'APP100 Projected Strikeouts',
+        'K V12 Adjusted Projection', 'SOL V2 Adjusted Projection'
+    ]:
+        base[k] = round(float(final_proj), 2)
+
+    for k in [
+        'edge_ks', 'Official K Edge', 'Line-Aware Smart Edge', 'Canonical Edge',
+        'Edge', 'K Edge', 'Proj Edge', 'Projection Edge', 'Edge Gap', 'Lean Gap'
+    ]:
+        if k in base or k in {'edge_ks', 'Line-Aware Smart Edge', 'Canonical Edge'}:
+            base[k] = round(float(edge), 2)
+
+    if side in {'OVER', 'UNDER'}:
+        for k in [
+            'pick_side', 'Model Lean', 'Lean', 'Side', 'Projected Side',
+            'Public Decision Side', 'Final Decision Side', 'Canonical Side',
+            'Final Resolved Side', 'Line-Aware Smart Side'
+        ]:
+            base[k] = side
+        base['Decision'] = side
+        base['Line-Aware Smart Decision'] = side
+        base['Canonical Side'] = side
+        base['Canonical Decision'] = f'SOL_V2_V14_{side}'
+
+    return base
+
+
+def _sv2v14_apply_guarded_row(row):
+    if not isinstance(row, dict):
+        return row
+    base = dict(row)
+    try:
+        # Start with V13 so this third file compares against exactly what worked yesterday.
+        if callable(globals().get('_sv2v13_apply_visible_row')):
+            base = dict(globals()['_sv2v13_apply_visible_row'](base) or base)
+    except Exception as e:
+        base['SOL V2 V14 Prior V13 Error'] = str(e)[:180]
+
+    raw = _sv2v14_num(_sv2v14_pick(base, [
+        'SOL V2 Raw Challenger Projection', 'K V12 Challenger Raw Projection', 'K V11 Raw Projection',
+        'Pre-WinningFile K PROJ', 'Pre-App70 K PROJ', 'Canonical Raw/Base K', 'RAW BASE_K',
+        'Existing Merge Control Projection', 'Canonical Final K Projection', 'Final Resolved Projection',
+        'K PROJ', 'Official K PROJ', 'projection', 'Projection'
+    ]), None)
+    v13 = _sv2v14_num(_sv2v14_pick(base, ['SOL V2 Adjusted Projection', 'K V12 Adjusted Projection', 'K PROJ']), raw)
+    line = _sv2v14_num(_sv2v14_pick(base, ['UD/Line', 'line', 'Line', 'Canonical Line', 'Underdog Line', 'Strikeout Line']), None)
+
+    if raw is None or v13 is None or line is None:
+        base['SOL V2 V14 Active'] = False
+        base['SOL V2 V14 Version'] = SOL_V2_V14_GUARD_VERSION
+        base['SOL V2 V14 Guard Reason'] = 'missing raw/v13/line'
+        return base
+
+    scores = _sv2v14_scores(base, raw, v13, line)
+    raw_side = scores['raw_side']
+    v13_side = scores['v13_side']
+    final_proj = float(v13)
+    action = 'KEEP_V13'
+    reason_parts = []
+
+    # Preserve-win / flip-quality guard.
+    if scores['flip']:
+        rescue = int(scores.get('rescue_score') or 0)
+        brk = int(scores.get('break_score') or 0)
+        if brk >= 5 and brk >= rescue + 2:
+            # Use a conservative raw-side preserve instead of letting a fragile flip break wins.
+            final_proj = float(raw)
+            # Make sure raw-side preserve stays visible on the raw side if it was exactly on the line.
+            if raw_side == 'OVER' and final_proj <= float(line):
+                final_proj = float(line) + 0.08
+            elif raw_side == 'UNDER' and final_proj >= float(line):
+                final_proj = float(line) - 0.08
+            action = 'PRESERVE_RAW_SIDE_GUARD'
+            reason_parts.append(f'blocked fragile V13 flip; rescue={rescue}, break={brk}')
+        elif rescue >= 5 and rescue >= brk + 1:
+            final_proj = float(v13)
+            action = 'ALLOW_V13_RESCUE'
+            reason_parts.append(f'allowed V13 rescue; rescue={rescue}, break={brk}')
+        else:
+            # Middle ground: do not let ambiguous flips swing hard. Keep the raw side but mark as guarded.
+            if raw_side == 'OVER':
+                final_proj = max(float(raw), float(line) + 0.06)
+            elif raw_side == 'UNDER':
+                final_proj = min(float(raw), float(line) - 0.06)
+            else:
+                final_proj = (float(raw) * 0.65) + (float(v13) * 0.35)
+            action = 'AMBIGUOUS_FLIP_RAW_SIDE_GUARD'
+            reason_parts.append(f'ambiguous flip guarded; rescue={rescue}, break={brk}')
+
+    # Second-pass targeted correction for the remaining V13 loss shapes.
+    # Only fires when a concrete pattern is present; otherwise V13 stays untouched.
+    if scores.get('second_pass'):
+        tags = [t for t, _ in scores['second_pass']]
+        tag_score = sum(s for _, s in scores['second_pass'])
+        cur_side = _sv2v14_side(final_proj, line)
+        f = scores.get('features', {})
+        pk = f.get('pitcher_k'); whiff = f.get('whiff'); csw = f.get('csw'); opp = f.get('opp_hand'); bf = f.get('bf'); ip = f.get('ip')
+        high_k_skill = (pk is not None and pk >= 24.0) or (whiff is not None and whiff >= 27.0) or (csw is not None and csw >= 28.0)
+        high_opp = (opp is not None and opp >= 23.0)
+        full_work = (bf is not None and bf >= 21.5) or (ip is not None and ip >= 5.4)
+
+        # UNDER danger: Sandoval/Painter/Bubba-style misses. Move only if ceiling support exists.
+        if cur_side == 'UNDER' and tag_score >= 4 and (high_k_skill or high_opp or full_work):
+            # Do not touch deep, clean unders; only near/reachable lines.
+            if float(line) - float(final_proj) <= 1.45:
+                final_proj = float(line) + (0.12 if float(line) <= 4.5 else 0.08)
+                action = 'SECOND_PASS_FALSE_UNDER_RESCUE'
+                reason_parts.append('second-pass false UNDER rescue: ' + ','.join(tags))
+        # OVER danger: Wacha/Freddy/Kremer/Bibee-style misses. Move to guarded under when support is weak.
+        elif cur_side == 'OVER' and tag_score >= 4:
+            # For high-line thin overs, force under. For low-line contact traps, only force under if not elite.
+            final_proj = float(line) - (0.10 if float(line) <= 4.5 else 0.12)
+            action = 'SECOND_PASS_FALSE_OVER_GUARD'
+            reason_parts.append('second-pass false OVER guard: ' + ','.join(tags))
+
+    if not reason_parts:
+        reason_parts.append('V13 kept; no V14 preserve/rescue guard fired')
+    reason_parts.extend(scores.get('notes') or [])
+
+    return _sv2v14_force_aliases(base, final_proj, line, action, '; '.join(reason_parts), scores)
+
+
+def _sv2v14_apply_board_rows(rows):
+    try:
+        return [_sv2v14_apply_guarded_row(dict(r)) if isinstance(r, dict) else r for r in (rows or [])]
+    except Exception as exc:
+        try:
+            st.session_state['sol_v2_v14_board_apply_error'] = str(exc)[:240]
+        except Exception:
+            pass
+        return rows
+
+
+def _sv2v14_apply_df(df):
+    try:
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            return df
+        return pd.DataFrame([_sv2v14_apply_guarded_row(r.to_dict()) for _, r in df.iterrows()])
+    except Exception as exc:
+        try:
+            st.session_state['sol_v2_v14_df_apply_error'] = str(exc)[:240]
+        except Exception:
+            pass
+        return df
+
+
+try:
+    if isinstance(globals().get('board'), list) and board:
+        board = _sv2v14_apply_board_rows(board)
+        if st.session_state.get('loaded_picks'):
+            st.session_state.loaded_picks = board
+except Exception as _sv2v14_board_err:
+    try:
+        st.session_state['sol_v2_v14_visible_board_error'] = str(_sv2v14_board_err)[:240]
+    except Exception:
+        pass
+
+
+_SOLV2V14_PREV_BUILD_KPROJ_TABLE = globals().get('build_kproj_table')
+if callable(_SOLV2V14_PREV_BUILD_KPROJ_TABLE):
+    def build_kproj_table(board):
+        return _sv2v14_apply_df(_SOLV2V14_PREV_BUILD_KPROJ_TABLE(board))
+
+
+_SOLV2V14_PREV_KCLEAN_FINAL_PROJ_LINE = globals().get('_kclean_final_proj_line')
+if callable(_SOLV2V14_PREV_KCLEAN_FINAL_PROJ_LINE):
+    def _kclean_final_proj_line(row):
+        r = _sv2v14_apply_guarded_row(row.to_dict() if hasattr(row, 'to_dict') else dict(row or {}))
+        proj = _sv2v14_num(_sv2v14_pick(r, [
+            'SOL V2 V14 Projection', 'SOL V2 Adjusted Projection', 'K V12 Adjusted Projection',
+            'K PROJ', 'Canonical Final K Projection', 'Line-Aware Smart Final K Projection'
+        ]), float('nan'))
+        line = _sv2v14_num(_sv2v14_pick(r, ['Canonical Line', 'UD/Line', 'Line', 'Underdog Line', 'Strikeout Line', 'line']), float('nan'))
+        return proj, line
+
+
+_SOLV2V14_PREV_KCLEAN_SIDE_LABEL = globals().get('_kclean_side_label')
+if callable(_SOLV2V14_PREV_KCLEAN_SIDE_LABEL):
+    def _kclean_side_label(row):
+        r = _sv2v14_apply_guarded_row(row.to_dict() if hasattr(row, 'to_dict') else dict(row or {}))
+        side = str(_sv2v14_pick(r, ['SOL V2 V14 Side', 'SOL V2 Adjusted Side', 'K V12 Adjusted Side', 'pick_side', 'Side', 'Decision'], '')).upper()
+        if 'OVER' in side:
+            return 'OVER'
+        if 'UNDER' in side:
+            return 'UNDER'
+        proj, line = _kclean_final_proj_line(r)
+        return _sv2v14_side(proj, line)
+
+
+def _kclean_copy_paste_slate(df, include_thin=False, force_all_players_ou=False):
+    """SOL V2 V14 guarded third-file visible copy/paste slate."""
+    try:
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            return ''
+        d = _sv2v14_apply_df(df.copy())
+        if 'Line Source' in d.columns and not force_all_players_ou:
+            d = d[d['Line Source'].astype(str).str.upper().eq('UNDERDOG')].copy()
+        if d.empty:
+            return ''
+        if 'UD/Line' not in d.columns:
+            d['UD/Line'] = d.get('Line')
+        d['UD/Line'] = pd.to_numeric(d['UD/Line'], errors='coerce')
+        d = d[d['UD/Line'].notna()].copy()
+        if '_owp_one_final_row_per_pitcher' in globals():
+            try:
+                d = _owp_one_final_row_per_pitcher(d)
+            except Exception:
+                pass
+
+        lines = ['SOL V2 V14 — GUARDED THIRD FILE', '']
+        for matchup, group in d.groupby('Matchup', sort=False):
+            block = []
+            for _, rr in group.iterrows():
+                row = _sv2v14_apply_guarded_row(rr.to_dict())
+                proj = _sv2v14_num(row.get('SOL V2 V14 Projection'), _sv2v14_num(row.get('K PROJ'), None))
+                v13 = _sv2v14_num(row.get('SOL V2 V14 V13 Projection'), _sv2v14_num(row.get('SOL V2 Adjusted Projection'), None))
+                raw = _sv2v14_num(row.get('SOL V2 Raw Challenger Projection'), None)
+                line = _sv2v14_num(row.get('UD/Line'), None)
+                if proj is None or line is None:
+                    continue
+                side = _sv2v14_side(proj, line)
+                if side not in {'OVER', 'UNDER'}:
+                    continue
+                ip = _sv2v14_num(_sv2v14_pick(row, ['IP Floor', 'IP PROJ', 'Projected IP', 'IP Projection', 'Proj IP', 'APP100 Projected IP'], None), None)
+                ip_text = '—' if ip is None else f'{ip:.2f}'
+                prob = _sv2v14_pct(_sv2v14_pick(row, ['Confidence %', 'Final Decision Confidence %', 'K Sim Current Side Prob %'], None), None)
+                if not include_thin:
+                    edge_ok = abs(float(proj) - float(line)) >= 0.25
+                    prob_ok = prob is None or prob >= 53.0
+                    if not (edge_ok and prob_ok):
+                        continue
+                prob_text = '' if prob is None else f' — {prob:.0f}%'
+                raw_text = '' if raw is None else f' — RAW {raw:.2f}'
+                v13_text = '' if v13 is None else f' / V13 {v13:.2f}'
+                delta_text = '' if raw is None else f' / Δ {float(proj)-float(raw):+.2f}'
+                action = str(row.get('SOL V2 V14 Action') or 'KEEP').replace('_', ' ')
+                block.append(f"• {row.get('Pitcher')} — V14 {side} {line:.1f} — {proj:.2f} K{prob_text} — IP {ip_text}{raw_text}{v13_text}{delta_text} — {action}")
+            if block:
+                lines.append(str(matchup))
+                lines.extend(block)
+                lines.append('')
+        return '\n'.join(lines).strip()
+    except Exception as e:
+        return f'SOL V2 V14 slate builder unavailable: {e}'
+
+
+def build_copy_paste_k_slate(df, show_pass_notes=False, force_all_players_ou=False):
+    return _kclean_copy_paste_slate(df, include_thin=bool(show_pass_notes or force_all_players_ou), force_all_players_ou=bool(force_all_players_ou))
+
+try:
+    st.sidebar.success('✅ SOL V2 V14 ACTIVE — guarded third-file preserve/rescue projection locked into board/cards/copy')
+    st.caption('✅ SOL V2 V14 active: third-file test. V14 keeps V13 rescues, adds preserve-win guards, and shows RAW/V13/Δ in copy slate.')
+except Exception:
+    pass
+
+
+
+# ============================================================================
+# SOL V2 V15 — PROPLINE PITCHING OUTS LINES/ODDS ONLY
+# 2026-09-09
+#
+# SAFETY CONTRACT:
+#   - Strikeout/K prop pulling is NOT touched.
+#   - K projection math, K side, K cards, K copy/paste, Challenger/SOL V2 V14
+#     projection logic are NOT touched.
+#   - PropLine is used only as a Pitching Outs market-line/odds fallback/enricher.
+#   - If Underdog PO line parser works, keep that line and only add PropLine odds.
+#   - If Underdog PO line parser misses, use PropLine pitcher_outs consensus line.
+#   - API key is read from PROP_LINE_API_KEY / st.secrets / temporary sidebar input.
+#     It is never hard-coded and never displayed.
+# ============================================================================
+PROPLINE_PO_VERSION = "SOL_V2_V15_PROPLINE_PO_LINES_ONLY_2026_09_09"
+PROPLINE_PO_MARKET = "pitcher_outs"
+PROPLINE_PO_BASE = "https://api.prop-line.com/v1"
+PROPLINE_PO_DEFAULT_PREFERRED_BOOKS = "underdog,prizepicks,draftkings,fanduel,fanatics,betonlineag,lowvig,betus,bovada,pinnacle,kalshi,betmgm"
+
+try:
+    with st.sidebar.expander("PropLine PO lines", expanded=False):
+        st.caption("Pitching Outs only. Strikeouts stay on the original app pull.")
+        st.text_input("Optional PropLine API key", type="password", key="propline_api_key_ui", help="Recommended: set PROP_LINE_API_KEY in Railway variables instead.")
+except Exception:
+    pass
+
+
+def _plpo_secret(name, default=""):
+    try:
+        v = os.environ.get(name)
+        if v not in (None, ""):
+            return str(v)
+    except Exception:
+        pass
+    try:
+        sec = getattr(st, "secrets", {})
+        if isinstance(sec, dict) and sec.get(name):
+            return str(sec.get(name))
+        try:
+            if sec.get(name):
+                return str(sec.get(name))
+        except Exception:
+            pass
+    except Exception:
+        pass
+    try:
+        v = st.session_state.get("propline_api_key_ui")
+        if v not in (None, ""):
+            return str(v)
+    except Exception:
+        pass
+    return default
+
+
+def _plpo_api_key():
+    return _plpo_secret("PROP_LINE_API_KEY", "").strip()
+
+
+def _plpo_int_env(name, default, lo=None, hi=None):
+    try:
+        v = int(float(os.environ.get(name, default)))
+    except Exception:
+        v = int(default)
+    if lo is not None:
+        v = max(int(lo), v)
+    if hi is not None:
+        v = min(int(hi), v)
+    return v
+
+
+def _plpo_txt(v, default=""):
+    try:
+        if v is None:
+            return default
+        s = str(v).strip()
+        if s.lower() in {"", "none", "nan", "null", "—", "-"}:
+            return default
+        return s
+    except Exception:
+        return default
+
+
+def _plpo_num(v, default=np.nan):
+    try:
+        if v is None or v == "":
+            return default
+        x = float(v)
+        return x if np.isfinite(x) else default
+    except Exception:
+        return default
+
+
+def _plpo_norm_name(name):
+    try:
+        return str(normalize_name(name))
+    except Exception:
+        import re as _re
+        s = str(name or "").lower()
+        s = _re.sub(r"[^a-z0-9 ]+", " ", s)
+        s = _re.sub(r"\b(jr|sr|ii|iii|iv)\b", " ", s)
+        return " ".join(s.split())
+
+
+def _plpo_name_score(a, b):
+    import difflib as _difflib
+    aa = _plpo_norm_name(a)
+    bb = _plpo_norm_name(b)
+    if not aa or not bb:
+        return 0.0
+    if aa == bb:
+        return 1.0
+    score = _difflib.SequenceMatcher(None, aa, bb).ratio()
+    ap = aa.split(); bp = bb.split()
+    if ap and bp and ap[-1] == bp[-1]:
+        score = max(score, 0.84)
+        if ap[0][:1] == bp[0][:1]:
+            score = max(score, 0.91)
+    return float(score)
+
+
+def _plpo_american(v):
+    x = _plpo_num(v, np.nan)
+    if not np.isfinite(x):
+        return "—"
+    xi = int(round(x))
+    return f"+{xi}" if xi > 0 else str(xi)
+
+
+def _plpo_headers(api_key):
+    return {"X-API-Key": str(api_key), "User-Agent": "sol-v2-propline-po-lines/1.0"}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _plpo_fetch_events_cached(api_key_tail_marker, full_key):
+    # full_key is intentionally used only inside the request header. Do not display it.
+    if not full_key:
+        return {"status": "MISSING_KEY", "events": [], "message": "Set PROP_LINE_API_KEY to use PropLine PO fallback."}
+    try:
+        r = requests.get(f"{PROPLINE_PO_BASE}/sports/baseball_mlb/events", headers=_plpo_headers(full_key), timeout=20)
+        quota = {
+            "daily_limit": r.headers.get("X-Daily-Limit") or r.headers.get("X-RateLimit-Limit"),
+            "daily_remaining": r.headers.get("X-Daily-Remaining") or r.headers.get("X-RateLimit-Remaining"),
+            "daily_reset": r.headers.get("X-Daily-Reset") or r.headers.get("X-RateLimit-Reset"),
+        }
+        if r.status_code != 200:
+            return {"status": f"HTTP_{r.status_code}", "events": [], "message": r.text[:220], "quota": quota}
+        data = r.json()
+        events = data if isinstance(data, list) else data.get("events", []) if isinstance(data, dict) else []
+        return {"status": "SUCCESS", "events": events, "quota": quota, "message": f"{len(events)} events"}
+    except Exception as exc:
+        return {"status": "ERROR", "events": [], "message": str(exc)[:220]}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _plpo_fetch_event_odds_cached(event_id, api_key_tail_marker, full_key, books):
+    if not full_key or not event_id:
+        return {"status": "MISSING_KEY", "event": {}, "message": "No key/event"}
+    try:
+        params = {"markets": PROPLINE_PO_MARKET, "includeBookIds": "true", "includeLinks": "true"}
+        if books:
+            params["bookmakers"] = books
+        r = requests.get(f"{PROPLINE_PO_BASE}/sports/baseball_mlb/events/{event_id}/odds", params=params, headers=_plpo_headers(full_key), timeout=20)
+        quota = {
+            "daily_limit": r.headers.get("X-Daily-Limit") or r.headers.get("X-RateLimit-Limit"),
+            "daily_remaining": r.headers.get("X-Daily-Remaining") or r.headers.get("X-RateLimit-Remaining"),
+            "daily_reset": r.headers.get("X-Daily-Reset") or r.headers.get("X-RateLimit-Reset"),
+        }
+        if r.status_code != 200:
+            return {"status": f"HTTP_{r.status_code}", "event": {}, "message": r.text[:220], "quota": quota}
+        return {"status": "SUCCESS", "event": r.json(), "quota": quota}
+    except Exception as exc:
+        return {"status": "ERROR", "event": {}, "message": str(exc)[:220]}
+
+
+def _plpo_book_priority(book):
+    prefs = _plpo_secret("PROPLINE_PO_PREFERRED_BOOKS", PROPLINE_PO_DEFAULT_PREFERRED_BOOKS)
+    order = [x.strip().lower() for x in str(prefs).split(",") if x.strip()]
+    key = str(book or "").lower().strip()
+    try:
+        return order.index(key)
+    except Exception:
+        return 999
+
+
+def _plpo_parse_event_pitcher_outs(ev):
+    rows = []
+    if not isinstance(ev, dict):
+        return rows
+    event_id = str(ev.get("id") or "")
+    event_label = f"{ev.get('away_team','')} @ {ev.get('home_team','')}".strip(" @")
+    commence = ev.get("commence_time") or ""
+    for book in ev.get("bookmakers", []) or []:
+        if not isinstance(book, dict):
+            continue
+        bkey = str(book.get("key") or "").lower().strip()
+        btitle = str(book.get("title") or bkey or "").strip()
+        for market in book.get("markets", []) or []:
+            if not isinstance(market, dict):
+                continue
+            if str(market.get("key") or "").lower() != PROPLINE_PO_MARKET:
+                continue
+            if market.get("suspended_at") not in (None, ""):
+                # Keep it visible in audit, but don't use suspended markets as primary.
+                suspended = True
+            else:
+                suspended = False
+            for outc in market.get("outcomes", []) or []:
+                if not isinstance(outc, dict):
+                    continue
+                side = str(outc.get("name") or "").upper().strip()
+                if "OVER" in side:
+                    side = "OVER"
+                elif "UNDER" in side:
+                    side = "UNDER"
+                else:
+                    continue
+                player = _plpo_txt(outc.get("description") or outc.get("player_name") or outc.get("participant") or outc.get("player"), "")
+                point = _plpo_num(outc.get("point"), np.nan)
+                if not player or not np.isfinite(point):
+                    continue
+                price = _plpo_num(outc.get("price") if outc.get("price") is not None else outc.get("price_american"), np.nan)
+                rows.append({
+                    "event_id": event_id,
+                    "event": event_label,
+                    "commence_time": commence,
+                    "bookmaker": bkey,
+                    "book_title": btitle,
+                    "market": PROPLINE_PO_MARKET,
+                    "player": player,
+                    "player_norm": _plpo_norm_name(player),
+                    "side": side,
+                    "line": float(point),
+                    "price": None if not np.isfinite(price) else int(round(float(price))),
+                    "last_update": market.get("last_update") or outc.get("last_change_at") or outc.get("recorded_at") or "",
+                    "link": book.get("link") or book.get("app_link") or "",
+                    "suspended": suspended,
+                })
+    return rows
+
+
+def _plpo_pair_outcomes(rows):
+    pairs = {}
+    for r in rows or []:
+        if not isinstance(r, dict) or r.get("suspended"):
+            continue
+        key = (r.get("event_id"), r.get("bookmaker"), r.get("player_norm"), round(float(r.get("line", 0)), 2))
+        p = pairs.setdefault(key, {
+            "event_id": r.get("event_id"), "event": r.get("event"), "commence_time": r.get("commence_time"),
+            "bookmaker": r.get("bookmaker"), "book_title": r.get("book_title"), "player": r.get("player"),
+            "player_norm": r.get("player_norm"), "line": float(r.get("line")), "over_price": None,
+            "under_price": None, "last_update": r.get("last_update"), "link": r.get("link") or "",
+        })
+        if r.get("side") == "OVER":
+            p["over_price"] = r.get("price")
+        elif r.get("side") == "UNDER":
+            p["under_price"] = r.get("price")
+    return list(pairs.values())
+
+
+def _plpo_best_by_player(pairs):
+    by = {}
+    for p in pairs or []:
+        by.setdefault(p.get("player_norm"), []).append(p)
+    out = {}
+    for norm, plist in by.items():
+        if not norm or not plist:
+            continue
+        counts = {}
+        for p in plist:
+            ln = round(float(p.get("line", 0)), 2)
+            counts.setdefault(ln, {"count": 0, "priority": 999})
+            counts[ln]["count"] += 1
+            counts[ln]["priority"] = min(counts[ln]["priority"], _plpo_book_priority(p.get("bookmaker")))
+        best_line = sorted(counts.items(), key=lambda kv: (-kv[1]["count"], kv[1]["priority"], abs(float(kv[0]) - 15.5)))[0][0]
+        chosen = [p for p in plist if abs(float(p.get("line", 0)) - float(best_line)) < 1e-9]
+        primary = sorted(chosen, key=lambda p: (_plpo_book_priority(p.get("bookmaker")), str(p.get("bookmaker"))))[0]
+        over_prices = [p.get("over_price") for p in chosen if isinstance(p.get("over_price"), (int, float))]
+        under_prices = [p.get("under_price") for p in chosen if isinstance(p.get("under_price"), (int, float))]
+        best_over = max(over_prices) if over_prices else primary.get("over_price")
+        best_under = max(under_prices) if under_prices else primary.get("under_price")
+        books = []
+        for p in sorted(chosen, key=lambda p: (_plpo_book_priority(p.get("bookmaker")), str(p.get("bookmaker")))):
+            label = p.get("book_title") or p.get("bookmaker")
+            if label and label not in books:
+                books.append(label)
+        line_summary = ", ".join(f"{ln:.1f}({meta['count']})" for ln, meta in sorted(counts.items(), key=lambda kv: -kv[1]["count"])[:6])
+        out[norm] = {
+            **primary,
+            "line": float(best_line),
+            "over_price": primary.get("over_price"),
+            "under_price": primary.get("under_price"),
+            "best_over_price": best_over,
+            "best_under_price": best_under,
+            "books": ", ".join(books[:8]),
+            "book_count": len(books),
+            "available_lines": line_summary,
+            "line_count": counts[best_line]["count"],
+            "all_pairs": chosen,
+            "source": "PropLine pitcher_outs consensus",
+        }
+    return out
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def _plpo_all_pitcher_outs_cached(full_key, books, max_events):
+    if not full_key:
+        return {"status": "MISSING_KEY", "players": {}, "pairs": [], "rows": [], "message": "PROP_LINE_API_KEY missing"}
+    tail = full_key[-6:]
+    ev_res = _plpo_fetch_events_cached(tail, full_key)
+    events = ev_res.get("events") or []
+    if not events:
+        return {"status": ev_res.get("status", "NO_EVENTS"), "players": {}, "pairs": [], "rows": [], "message": ev_res.get("message", "No events"), "quota": ev_res.get("quota")}
+    rows = []
+    odds_errors = []
+    for ev in events[:max_events]:
+        eid = ev.get("id") if isinstance(ev, dict) else None
+        if not eid:
+            continue
+        od = _plpo_fetch_event_odds_cached(str(eid), tail, full_key, books)
+        if od.get("status") == "SUCCESS":
+            rows.extend(_plpo_parse_event_pitcher_outs(od.get("event") or {}))
+        else:
+            odds_errors.append(f"{eid}:{od.get('status')}")
+    pairs = _plpo_pair_outcomes(rows)
+    players = _plpo_best_by_player(pairs)
+    return {
+        "status": "SUCCESS" if players else "NO_PITCHER_OUTS",
+        "players": players,
+        "pairs": pairs,
+        "rows": rows,
+        "message": f"{len(players)} pitchers · {len(pairs)} book/line pairs · {len(events[:max_events])} events checked",
+        "errors": ", ".join(odds_errors[:8]),
+        "quota": ev_res.get("quota"),
+    }
+
+
+def _plpo_get_all():
+    key = _plpo_api_key()
+    books = _plpo_secret("PROPLINE_PO_BOOKMAKERS", "").strip()
+    max_events = _plpo_int_env("PROPLINE_PO_MAX_EVENTS", 36, 1, 80)
+    return _plpo_all_pitcher_outs_cached(key, books, max_events)
+
+
+def _plpo_find_player(player_name):
+    data = _plpo_get_all()
+    players = data.get("players") or {}
+    if not players:
+        return None, 0.0, data
+    qn = _plpo_norm_name(player_name)
+    if qn in players:
+        return players[qn], 1.0, data
+    best = None; best_score = 0.0
+    for norm, rec in players.items():
+        sc = _plpo_name_score(player_name, rec.get("player") or norm)
+        if sc > best_score:
+            best, best_score = rec, sc
+    if best is not None and best_score >= 0.88:
+        return best, best_score, data
+    return None, best_score, data
+
+
+def _plpo_line_info_for_player(player_name):
+    rec, score, data = _plpo_find_player(player_name)
+    if not rec:
+        return {"status": data.get("status", "NO_MATCH"), "line": None, "message": data.get("message", "No PropLine pitcher_outs match"), "match_score": round(score, 3)}
+    over = _plpo_american(rec.get("over_price"))
+    under = _plpo_american(rec.get("under_price"))
+    best_over = _plpo_american(rec.get("best_over_price"))
+    best_under = _plpo_american(rec.get("best_under_price"))
+    return {
+        "status": "FOUND",
+        "line": float(rec.get("line")),
+        "message": f"PropLine pitcher_outs {float(rec.get('line')):.1f} · {rec.get('book_title') or rec.get('bookmaker')} O {over} / U {under}",
+        "source": "PropLine",
+        "provider": "PropLine",
+        "rows": [{
+            "Source": "PropLine", "Provider": rec.get("book_title") or rec.get("bookmaker"), "Player": player_name,
+            "Matched Name": rec.get("player"), "Market": "Pitching Outs", "Line": float(rec.get("line")),
+            "Over Odds": over, "Under Odds": under, "Best Over Odds": best_over, "Best Under Odds": best_under,
+            "Books": rec.get("books"), "Available Lines": rec.get("available_lines"), "Event": rec.get("event"),
+            "Match Score": round(score, 3), "Evidence": rec.get("source"),
+        }],
+        "debug_lines": f"PropLine {rec.get('available_lines','')} · books {rec.get('books','')}",
+        "propline": rec,
+        "match_score": round(score, 3),
+    }
+
+
+_PROPLINE_PO_PREV_UD_FETCH = globals().get("_beta_fetch_underdog_pitcher_market")
+if callable(_PROPLINE_PO_PREV_UD_FETCH):
+    def _beta_fetch_underdog_pitcher_market(player_name, market_kind):
+        mk = str(market_kind or "").upper()
+        if mk != "OUTS":
+            # IMPORTANT: pitcher strikeouts and all other markets use the original app logic.
+            return _PROPLINE_PO_PREV_UD_FETCH(player_name, market_kind)
+        old = _PROPLINE_PO_PREV_UD_FETCH(player_name, market_kind)
+        old = old if isinstance(old, dict) else {"status": "ERROR", "line": None, "rows": [], "message": "original fetch returned non-dict"}
+        pl = _plpo_line_info_for_player(player_name)
+        old_found = str(old.get("status") or "").upper() == "FOUND" and _plpo_num(old.get("line"), np.nan) == _plpo_num(old.get("line"), np.nan)
+        pl_found = str(pl.get("status") or "").upper() == "FOUND" and _plpo_num(pl.get("line"), np.nan) == _plpo_num(pl.get("line"), np.nan)
+        if old_found:
+            if pl_found:
+                old["PropLine Status"] = "FOUND_ODDS_ENRICH_ONLY"
+                old["PropLine Line"] = pl.get("line")
+                old["PropLine Message"] = pl.get("message")
+                old["PropLine Debug"] = pl.get("debug_lines")
+                old["PropLine Record"] = pl.get("propline")
+                try:
+                    old["rows"] = list(old.get("rows") or []) + list(pl.get("rows") or [])
+                except Exception:
+                    pass
+            else:
+                old["PropLine Status"] = pl.get("status")
+                old["PropLine Message"] = pl.get("message")
+            old["Line Provider"] = "Underdog parser"
+            old["Line Fallback Used"] = "NO"
+            return old
+        if pl_found:
+            return {
+                "status": "FOUND",
+                "line": pl.get("line"),
+                "rows": pl.get("rows", []),
+                "message": pl.get("message"),
+                "debug_lines": pl.get("debug_lines"),
+                "source_timestamp": now_iso() if "now_iso" in globals() else "",
+                "Line Provider": "PropLine fallback",
+                "Line Fallback Used": "YES",
+                "PropLine Status": "FOUND_USED_AS_LINE",
+                "PropLine Line": pl.get("line"),
+                "PropLine Message": pl.get("message"),
+                "PropLine Debug": pl.get("debug_lines"),
+                "PropLine Record": pl.get("propline"),
+            }
+        old["Line Provider"] = "Underdog parser"
+        old["Line Fallback Used"] = "NO_PROP_LINE_MATCH"
+        old["PropLine Status"] = pl.get("status")
+        old["PropLine Message"] = pl.get("message")
+        return old
+
+
+def _plpo_apply_cols_to_po_row(row):
+    out = dict(row or {})
+    pitcher = _plpo_txt(out.get("Pitcher") or out.get("pitcher"), "")
+    rec, score, data = _plpo_find_player(pitcher) if pitcher else (None, 0.0, _plpo_get_all())
+    out["PropLine PO Version"] = PROPLINE_PO_VERSION
+    out["PropLine PO Status"] = data.get("status", "MISSING")
+    out["PropLine PO Message"] = data.get("message", "")
+    try:
+        quota = data.get("quota") or {}
+        out["PropLine Daily Remaining"] = quota.get("daily_remaining") or ""
+    except Exception:
+        pass
+    if not rec:
+        out["PropLine Match Score"] = round(float(score), 3) if score else ""
+        out["PO Line Provider"] = out.get("PO Line Provider") or "Original/Underdog only"
+        return out
+
+    out["PropLine Match Score"] = round(float(score), 3)
+    out["PropLine Matched Player"] = rec.get("player")
+    out["PropLine Event"] = rec.get("event")
+    out["PropLine Line"] = rec.get("line")
+    out["PropLine Primary Book"] = rec.get("book_title") or rec.get("bookmaker")
+    out["PropLine Over Odds"] = _plpo_american(rec.get("over_price"))
+    out["PropLine Under Odds"] = _plpo_american(rec.get("under_price"))
+    out["PropLine Best Over Odds"] = _plpo_american(rec.get("best_over_price"))
+    out["PropLine Best Under Odds"] = _plpo_american(rec.get("best_under_price"))
+    out["PropLine Books"] = rec.get("books")
+    out["PropLine Book Count"] = rec.get("book_count")
+    out["PropLine Available Lines"] = rec.get("available_lines")
+    out["PropLine Last Update"] = rec.get("last_update")
+
+    line_now = _plpo_num(out.get("UD Line"), np.nan)
+    pl_line = _plpo_num(rec.get("line"), np.nan)
+    if not np.isfinite(line_now) and np.isfinite(pl_line):
+        out["UD Line"] = float(pl_line)
+        out["PO Line Provider"] = "PropLine fallback"
+        out["PO Line Fallback Used"] = "YES"
+    elif np.isfinite(line_now) and np.isfinite(pl_line):
+        out["PO Line Provider"] = "Original/Underdog + PropLine odds"
+        out["PO Line Fallback Used"] = "NO"
+        out["PO Line Difference vs PropLine"] = round(float(line_now) - float(pl_line), 2)
+    else:
+        out["PO Line Provider"] = "Original/Underdog only"
+        out["PO Line Fallback Used"] = "NO"
+
+    # If the line came from PropLine fallback, recompute the PUBLIC PO side/edge/prob
+    # using the already-existing V5 projection. This changes only Pitching Outs.
+    final_proj = _plpo_num(out.get("PO V5 Final Projection") if out.get("PO V5 Final Projection") not in (None, "") else out.get("PO Active Projection"), np.nan)
+    active_line = _plpo_num(out.get("UD Line"), np.nan)
+    if np.isfinite(final_proj) and np.isfinite(active_line):
+        edge = final_proj - active_line
+        side = "OVER" if edge > 0 else "UNDER" if edge < 0 else "PASS"
+        coverage = _plpo_num(out.get("PO V5 Data Coverage %"), 50.0)
+        rconf = _plpo_num(out.get("PO V3 Restriction Confidence %"), 0.0)
+        try:
+            prob, over_p, under_p, sd = _po_v3_candidate_probability(out, final_proj, active_line, side, coverage, rconf)
+        except Exception:
+            prob = over_p = under_p = sd = np.nan
+        try:
+            tier = _po_v5_tier(side, edge, prob, coverage, str(out.get("PO V3 Hard Restriction") or "").upper() == "YES")
+        except Exception:
+            tier = out.get("PO V5 Tier", "TRACK ONLY")
+        out["PO V5 Final Side"] = side
+        out["PO V5 Final Edge"] = round(edge, 2)
+        out["PO V5 Final Probability %"] = prob if np.isfinite(_plpo_num(prob, np.nan)) else out.get("PO V5 Final Probability %", "")
+        out["PO V5 Over %"] = over_p if np.isfinite(_plpo_num(over_p, np.nan)) else out.get("PO V5 Over %", "")
+        out["PO V5 Under %"] = under_p if np.isfinite(_plpo_num(under_p, np.nan)) else out.get("PO V5 Under %", "")
+        out["PO V5 SD Outs"] = sd if np.isfinite(_plpo_num(sd, np.nan)) else out.get("PO V5 SD Outs", "")
+        out["PO V5 Tier"] = tier
+        out["PO Active Model"] = str(out.get("PO Active Model") or "REAL WORKLOAD V5") + " + PROPLINE PO LINE" if out.get("PO Line Fallback Used") == "YES" else out.get("PO Active Model", "REAL WORKLOAD V5")
+        out["PO Active Lean"] = side
+        out["PO Active Edge"] = round(edge, 2)
+        out["PO Active Hit %"] = out["PO V5 Final Probability %"]
+        out["PO Official Tier"] = tier
+    return out
+
+
+_PROPLINE_PO_PREV_ROWS_PUBLIC = globals().get("_beta_projection_rows")
+if callable(_PROPLINE_PO_PREV_ROWS_PUBLIC):
+    def _beta_projection_rows(board, market_kind="OUTS"):
+        df = _PROPLINE_PO_PREV_ROWS_PUBLIC(board, market_kind)
+        if not isinstance(df, pd.DataFrame) or df.empty or str(market_kind or "").upper() != "OUTS":
+            return df
+        rows = []
+        for _, rr in df.iterrows():
+            try:
+                rows.append(_plpo_apply_cols_to_po_row(rr.to_dict()))
+            except Exception as exc:
+                row = rr.to_dict(); row["PropLine PO Error"] = str(exc)[:160]; rows.append(row)
+        return pd.DataFrame(rows)
+
+
+def _plpo_render_status_box(df):
+    try:
+        data = _plpo_get_all()
+        status = data.get("status", "")
+        msg = data.get("message", "")
+        quota = data.get("quota") or {}
+        matched = int(pd.Series(df.get("PropLine Matched Player", [])).astype(str).str.strip().ne("").sum()) if isinstance(df, pd.DataFrame) and "PropLine Matched Player" in df.columns else 0
+        line_fallback = int(pd.Series(df.get("PO Line Fallback Used", [])).astype(str).str.upper().eq("YES").sum()) if isinstance(df, pd.DataFrame) and "PO Line Fallback Used" in df.columns else 0
+        a,b,c,d = st.columns(4)
+        a.metric("PropLine PO", status)
+        b.metric("PO matches", matched)
+        c.metric("Fallback lines used", line_fallback)
+        d.metric("API remaining", quota.get("daily_remaining") or "—")
+        if status == "MISSING_KEY":
+            st.warning("PropLine PO fallback is installed but no key is set. Add PROP_LINE_API_KEY in Railway Variables, or use the temporary sidebar input.")
+        elif status not in {"SUCCESS", "NO_PITCHER_OUTS"}:
+            st.caption(f"PropLine status: {status} · {msg}")
+    except Exception as exc:
+        st.caption(f"PropLine PO status unavailable: {exc}")
+
+
+_PROPLINE_PO_PREV_RENDER_PUBLIC = globals().get("render_beta_pitching_outs_tab")
+def _impl_render_beta_pitching_outs_tab_propline_v15(board):
+    try:
+        df = _beta_projection_rows(board, "OUTS")
+        _audit_capture_market_snapshot("PITCHING_OUTS_V15_PROPLINE_PO", df, "render_beta_pitching_outs_tab")
+    except Exception as exc:
+        st.info(f"Pitching Outs board unavailable: {exc}")
+        df = pd.DataFrame()
+    st.markdown('<div class="section-title-pro">🔥 SOL V2 Pitching Outs · V15 PropLine Line/Odds Safe Fallback</div>', unsafe_allow_html=True)
+    st.caption("PropLine is used ONLY for Pitching Outs lines/odds. Strikeout props and K projections keep the original app pull. If the old Underdog line works, it stays; PropLine just enriches odds. If it misses, PropLine pitcher_outs consensus fills the line.")
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        _plpo_render_status_box(df)
+        st.info("No Pitching Outs rows yet. Refresh the board first.")
+        return
+    _plpo_render_status_box(df)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Pitchers", int(len(df)))
+    c2.metric("PO lines", int(pd.to_numeric(df.get("UD Line"), errors="coerce").notna().sum()) if "UD Line" in df.columns else 0)
+    c3.metric("PropLine books avg", "—" if "PropLine Book Count" not in df.columns else f"{pd.to_numeric(df['PropLine Book Count'], errors='coerce').dropna().mean():.1f}")
+    plays = df.get("PO V5 Tier", pd.Series(dtype=str)).astype(str).str.contains("OFFICIAL|PLAYABLE", regex=True).sum() if "PO V5 Tier" in df.columns else 0
+    c4.metric("Official / Playable", int(plays))
+    _po_render_player_cards(df, board=board)
+    with st.expander("Pitching Outs V15 · PropLine lines and odds", expanded=True):
+        cols = [c for c in [
+            "Pitcher", "Matchup", "UD Line", "PO Line Provider", "PO Line Fallback Used", "PropLine Line", "PO Line Difference vs PropLine",
+            "PO V5 Final Projection", "PO V5 Final Side", "PO V5 Final Edge", "PO V5 Final Probability %", "PO V5 Tier",
+            "PropLine Primary Book", "PropLine Over Odds", "PropLine Under Odds", "PropLine Best Over Odds", "PropLine Best Under Odds",
+            "PropLine Books", "PropLine Available Lines", "PropLine Event", "PropLine Match Score", "PropLine PO Status", "PropLine Daily Remaining"
+        ] if c in df.columns]
+        st.dataframe(df[cols] if cols else df, use_container_width=True, hide_index=True)
+    with st.expander("Pitching Outs V15 full audit", expanded=False):
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    if _PO_CAL_PREV_RENDER_PO is not None:
+        with st.expander("Advanced PO tools · save/grade, loss lab, simulation", expanded=False):
+            _PO_CAL_PREV_RENDER_PO(board)
+
+
+render_beta_pitching_outs_tab = _impl_render_beta_pitching_outs_tab_propline_v15
+
+try:
+    st.sidebar.success("✅ SOL V2 V15 ACTIVE — PropLine Pitching Outs lines/odds only")
+except Exception:
+    pass
+
+
 tab_kproj, tab_beta_outs, tab_first_inning_k, tab_beta_ip_debug, tab_moneyline, tab_loss_lab, tab_learning_lab, tab_calibration, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
     "K PROJ / UPSIDE",
@@ -149649,3 +151011,10 @@ if globals().get("full_live_audit_enabled", False):
         with st.sidebar:
             st.error(f"Audit export failed: {_audit_error}")
 
+
+
+try:
+    st.sidebar.success("✅ SOL V2 V17 ACTIVE — one main decision locked across copy/paste + player cards")
+    st.caption("✅ SOL V2 V17 active: copy/paste, PROJ K side, and Final Decision box now use the same SOL V2 main decision. No more OVER/UNDER mismatch on one card.")
+except Exception:
+    pass
