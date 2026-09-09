@@ -1,0 +1,9 @@
+# PropLine API setup for SOL V2
+# Keep the real key OUT of GitHub.
+# Add this variable in Railway service variables instead:
+
+PROP_LINE_API_KEY=
+
+# Scope rule:
+# - PropLine is used only for Pitching Outs lines/odds.
+# - Strikeout projections and strikeout line source remain untouched.
