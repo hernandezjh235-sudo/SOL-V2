@@ -147700,6 +147700,527 @@ except Exception:
     pass
 
 
+
+
+
+# =============================================================================
+# SOL V2 V19 — LOSS CUT + PRESERVE-WINS GUARD
+# 2026-09-10
+#
+# Purpose:
+#   The V14 third-file slate still landed at 15-14.  V19 is intentionally not
+#   more aggressive.  It keeps V14/V13 rescue logic, but adds a hard quality
+#   layer to stop the 14-loss type slate from printing every fragile side.
+#
+# Safety contract:
+#   - No API key is hard-coded.
+#   - Strikeout provider/pull is still untouched.
+#   - PropLine remains manual Pitching Outs only from V18.
+#   - V19 changes the visible SOL V2 K projection/decision only after V14 has
+#     generated a candidate row, then it either:
+#       (a) keeps a high-quality rescue,
+#       (b) preserves the raw Challenger side when V14's flip is fragile, or
+#       (c) marks the row PASS/TRACK so it does not count as an official play.
+# =============================================================================
+SOL_V2_V19_VERSION = "SOL_V2_V19_LOSS_CUT_PRESERVE_WINS_SAFE_2026_09_10"
+
+
+def _sv2v19_num(v, default=None):
+    try:
+        return _sv2v14_num(v, default) if '_sv2v14_num' in globals() else (float(v) if v not in (None, '') else default)
+    except Exception:
+        return default
+
+
+def _sv2v19_pct(v, default=None):
+    try:
+        return _sv2v14_pct(v, default) if '_sv2v14_pct' in globals() else _sv2v19_num(v, default)
+    except Exception:
+        return default
+
+
+def _sv2v19_pick(row, keys, default=None):
+    try:
+        return _sv2v14_pick(row, keys, default) if '_sv2v14_pick' in globals() else default
+    except Exception:
+        return default
+
+
+def _sv2v19_side(proj, line):
+    try:
+        return _sv2v14_side(proj, line) if '_sv2v14_side' in globals() else ('OVER' if float(proj) > float(line) else 'UNDER' if float(proj) < float(line) else 'PASS')
+    except Exception:
+        return ''
+
+
+def _sv2v19_feature_pack(row):
+    try:
+        if callable(globals().get('_sv2v14_feature_pack')):
+            return dict(_sv2v14_feature_pack(row) or {})
+    except Exception:
+        pass
+    return {}
+
+
+def _sv2v19_bool_num(v, cmp, t):
+    x = _sv2v19_num(v, None)
+    if x is None:
+        return False
+    try:
+        return cmp(float(x), float(t))
+    except Exception:
+        return False
+
+
+def _sv2v19_signal(row):
+    r = row or {}
+    f = _sv2v19_feature_pack(r)
+    raw = _sv2v19_num(_sv2v19_pick(r, [
+        'SOL V2 Raw Challenger Projection', 'K V12 Challenger Raw Projection',
+        'K V11 Raw Projection', 'Pre-WinningFile K PROJ', 'Pre-App70 K PROJ',
+        'Canonical Raw/Base K', 'RAW BASE_K', 'Existing Merge Control Projection'
+    ]), None)
+    # V14 candidate after V13/old-file middle path.
+    v14 = _sv2v19_num(_sv2v19_pick(r, [
+        'SOL V2 V14 Projection', 'SOL V2 Card Main Projection', 'SOL V2 Adjusted Projection',
+        'K V12 Adjusted Projection', 'K PROJ', 'Official K PROJ', 'projection', 'Projection'
+    ]), None)
+    v13 = _sv2v19_num(_sv2v19_pick(r, [
+        'SOL V2 V14 V13 Projection', 'SOL V2 Adjusted Projection', 'K V12 Adjusted Projection'
+    ]), v14)
+    line = _sv2v19_num(_sv2v19_pick(r, [
+        'UD/Line', 'Line', 'line', 'Canonical Line', 'Underdog Line', 'Strikeout Line'
+    ]), None)
+    prob = _sv2v19_pct(_sv2v19_pick(r, [
+        'SOL V2 V14 Probability %', 'Confidence %', 'Final Decision Confidence %',
+        'K Sim Current Side Prob %', 'K Sim True Prob %', 'Challenger K VNext Probability %'
+    ]), None)
+
+    pk = f.get('pitcher_k'); whiff = f.get('whiff'); csw = f.get('csw')
+    opp = f.get('opp_hand'); opp_low = f.get('opp_low'); lineup = f.get('lineup_k')
+    bf = f.get('bf'); ip = f.get('ip'); k9 = f.get('k9'); ceiling = f.get('ceiling')
+
+    def ge(v, t): return v is not None and float(v) >= float(t)
+    def le(v, t): return v is not None and float(v) <= float(t)
+
+    high_k_skill = ge(pk, 24.0) or ge(whiff, 27.0) or ge(csw, 28.0) or ge(k9, 9.0)
+    strong_k_skill = ge(pk, 26.0) or ge(whiff, 29.0) or ge(csw, 29.0) or ge(k9, 9.8)
+    elite_k_skill = ge(pk, 29.0) or ge(whiff, 31.0) or ge(csw, 30.2) or ge(k9, 10.7)
+    low_k_skill = le(pk, 21.0) and (whiff is None or whiff <= 24.5) and (k9 is None or k9 <= 8.0)
+    high_opp = ge(opp, 23.0) or ge(lineup, 23.0)
+    strong_opp = ge(opp, 24.0) or ge(lineup, 24.0)
+    low_opp = le(opp_low, 21.2) or (le(opp, 21.2) and (lineup is None or lineup <= 21.5))
+    full_work = ge(bf, 21.5) or ge(ip, 5.35)
+    short_work = le(bf, 18.5) or le(ip, 4.45)
+    relieverish = le(bf, 15.5) or le(ip, 3.35)
+
+    raw_side = _sv2v19_side(raw, line) if raw is not None and line is not None else ''
+    v14_side = _sv2v19_side(v14, line) if v14 is not None and line is not None else ''
+    v13_side = _sv2v19_side(v13, line) if v13 is not None and line is not None else ''
+    raw_edge = None if raw is None or line is None else float(raw) - float(line)
+    v14_edge = None if v14 is None or line is None else float(v14) - float(line)
+    flip = raw_side in {'OVER','UNDER'} and v14_side in {'OVER','UNDER'} and raw_side != v14_side
+
+    return {
+        'raw': raw, 'v13': v13, 'v14': v14, 'line': line, 'prob': prob,
+        'raw_side': raw_side, 'v13_side': v13_side, 'v14_side': v14_side,
+        'raw_edge': raw_edge, 'v14_edge': v14_edge, 'flip': flip,
+        'pk': pk, 'whiff': whiff, 'csw': csw, 'opp': opp, 'opp_low': opp_low,
+        'lineup': lineup, 'bf': bf, 'ip': ip, 'k9': k9, 'ceiling': ceiling,
+        'high_k_skill': high_k_skill, 'strong_k_skill': strong_k_skill,
+        'elite_k_skill': elite_k_skill, 'low_k_skill': low_k_skill,
+        'high_opp': high_opp, 'strong_opp': strong_opp, 'low_opp': low_opp,
+        'full_work': full_work, 'short_work': short_work, 'relieverish': relieverish,
+    }
+
+
+def _sv2v19_force_aliases(base, proj, line, official_decision, action, reason, sig):
+    out = dict(base or {})
+    p = round(float(proj), 3)
+    l = float(line)
+    side = _sv2v19_side(p, l)
+    edge = round(float(p) - float(l), 3)
+
+    out['SOL V2 V19 Active'] = True
+    out['SOL V2 V19 Version'] = SOL_V2_V19_VERSION
+    out['SOL V2 V19 Projection'] = p
+    out['SOL V2 V19 Side'] = side
+    out['SOL V2 V19 Edge'] = edge
+    out['SOL V2 V19 Main Decision'] = official_decision
+    out['SOL V2 V19 Action'] = action
+    out['SOL V2 V19 Guard Reason'] = str(reason)[:650]
+    out['SOL V2 V19 Raw Challenger Projection'] = sig.get('raw')
+    out['SOL V2 V19 V13 Projection'] = sig.get('v13')
+    out['SOL V2 V19 V14 Projection'] = sig.get('v14')
+    out['SOL V2 V19 Raw Side'] = sig.get('raw_side')
+    out['SOL V2 V19 V14 Side'] = sig.get('v14_side')
+    out['SOL V2 V19 Prob %'] = sig.get('prob')
+    out['SOL V2 V19 Feature Snapshot'] = (
+        f"pk={sig.get('pk')} | whiff={sig.get('whiff')} | csw={sig.get('csw')} | "
+        f"opp={sig.get('opp')} | lineup={sig.get('lineup')} | bf={sig.get('bf')} | ip={sig.get('ip')}"
+    )
+
+    # Hard projection aliases: the actual visible number changes.
+    for k in [
+        'projection', 'Projection', 'K PROJ', 'Official K PROJ', 'Final K Projection',
+        'Challenger K VNext Projection', 'Line-Aware Smart Final K Projection',
+        'Final Resolved Projection', 'Canonical Final K Projection', 'APP100 Projected Strikeouts',
+        'K V12 Adjusted Projection', 'SOL V2 Adjusted Projection', 'SOL V2 Card Main Projection'
+    ]:
+        out[k] = round(float(p), 2)
+
+    for k in [
+        'edge_ks', 'Official K Edge', 'Line-Aware Smart Edge', 'Canonical Edge',
+        'Edge', 'K Edge', 'Proj Edge', 'Projection Edge', 'Edge Gap', 'Lean Gap',
+        'SOL V2 Card Main Edge'
+    ]:
+        if k in out or k in {'edge_ks', 'Line-Aware Smart Edge', 'Canonical Edge', 'SOL V2 Card Main Edge'}:
+            out[k] = round(float(edge), 2)
+
+    # One clean public decision.  PASS stays PASS on cards/copy so risky rows
+    # stop becoming official losses, while the underlying projected side remains
+    # visible in SOL V2 V19 Side.
+    main = str(official_decision or side).upper()
+    if main.startswith('PASS'):
+        card_side = 'PASS'
+        public_side = 'PASS'
+        public_decision = f"PASS ({side})"
+    else:
+        card_side = side if side in {'OVER','UNDER'} else main
+        public_side = card_side
+        public_decision = card_side
+
+    for k in [
+        'SOL V2 Card Main Side', 'SOL V2 Card Main Decision', 'Final Decision Side',
+        'Public Decision Side', 'Line-Aware Smart Side', 'Line-Aware Smart Decision',
+        'Canonical Side', 'Canonical Decision', 'Decision', 'Model Lean', 'Projected Side',
+        'Side', 'Lean', 'pick_side'
+    ]:
+        out[k] = public_side if k not in {'Canonical Decision','Decision','SOL V2 Card Main Decision','Line-Aware Smart Decision'} else public_decision
+
+    out['Official Filter'] = 'PASS' if public_side == 'PASS' else 'PLAYABLE'
+    out['Official Card Tier'] = 'PASS/TRACK' if public_side == 'PASS' else 'PLAYABLE'
+    out['SOL V2 V19 Public Side'] = public_side
+    out['SOL V2 V19 Underlying Side'] = side
+    return out
+
+
+def _sv2v19_apply_row(row):
+    if not isinstance(row, dict):
+        return row
+    base = dict(row)
+    try:
+        if callable(globals().get('_sv2v14_apply_guarded_row')):
+            base = dict(_sv2v14_apply_guarded_row(base) or base)
+    except Exception as exc:
+        base['SOL V2 V19 Prior V14 Error'] = str(exc)[:180]
+
+    sig = _sv2v19_signal(base)
+    raw = sig.get('raw'); v14 = sig.get('v14'); line = sig.get('line')
+    if raw is None or v14 is None or line is None:
+        base['SOL V2 V19 Active'] = False
+        base['SOL V2 V19 Version'] = SOL_V2_V19_VERSION
+        base['SOL V2 V19 Guard Reason'] = 'missing raw/v14/line'
+        return base
+
+    final = float(v14)
+    linef = float(line)
+    side = sig.get('v14_side')
+    raw_side = sig.get('raw_side')
+    edge = sig.get('v14_edge')
+    prob = sig.get('prob')
+    action = 'KEEP_V14'
+    official = side if side in {'OVER','UNDER'} else 'PASS'
+    reasons = []
+
+    def abs_edge(x):
+        try: return abs(float(x))
+        except Exception: return 0.0
+
+    def preserve_raw_side(label):
+        nonlocal final, action, official
+        if raw_side == 'OVER':
+            final = max(float(raw), linef + 0.08)
+            official = 'OVER'
+        elif raw_side == 'UNDER':
+            final = min(float(raw), linef - 0.08)
+            official = 'UNDER'
+        else:
+            final = (float(raw) * 0.65) + (float(v14) * 0.35)
+            official = _sv2v19_side(final, linef)
+        action = label
+
+    def pass_track(label):
+        nonlocal action, official
+        action = label
+        official = 'PASS'
+
+    # ------------------------------------------------------------------
+    # A) Broken-win protection: V14/V13 can rescue, but thin flips do not
+    #    get to break the raw Challenger side anymore.
+    # ------------------------------------------------------------------
+    if sig.get('flip'):
+        over_edge = (final - linef) if side == 'OVER' else None
+        under_gap = (linef - final) if side == 'UNDER' else None
+
+        # Raw UNDER -> V14 OVER: block the exact fragile shapes that broke wins
+        # such as high-line tiny over, low-line tiny over, and reliever low-line.
+        if raw_side == 'UNDER' and side == 'OVER':
+            thin_over = over_edge is not None and over_edge <= 0.55
+            very_thin_over = over_edge is not None and over_edge <= 0.35
+            high_line_thin = linef >= 5.5 and over_edge is not None and over_edge <= 0.85
+            low_line_tiny = linef <= 2.5 and over_edge is not None and over_edge <= 0.45
+            raw_under_meaningful = sig.get('raw_edge') is not None and sig.get('raw_edge') <= -0.35
+            confirmed_rescue = (
+                sig.get('strong_k_skill') and sig.get('high_opp') and sig.get('full_work') and
+                (prob is None or float(prob) >= 56.0) and not sig.get('low_opp')
+            ) or (sig.get('elite_k_skill') and (sig.get('high_opp') or sig.get('full_work')) and not very_thin_over)
+
+            if sig.get('relieverish') and linef <= 2.5:
+                preserve_raw_side('V19_PRESERVE_RAW_LOW_LINE_RELIEVER_FLIP')
+                reasons.append('blocked low-line reliever/short-BF flip')
+            elif high_line_thin and not (sig.get('elite_k_skill') and sig.get('strong_opp') and (prob is None or prob >= 58.0)):
+                preserve_raw_side('V19_PRESERVE_RAW_HIGH_LINE_THIN_OVER_FLIP')
+                reasons.append('blocked high-line thin OVER flip')
+            elif low_line_tiny and not confirmed_rescue:
+                preserve_raw_side('V19_PRESERVE_RAW_LOW_LINE_TINY_OVER_FLIP')
+                reasons.append('blocked low-line tiny OVER flip')
+            elif raw_under_meaningful and thin_over and not confirmed_rescue:
+                preserve_raw_side('V19_PRESERVE_RAW_MEANINGFUL_UNDER_FLIP')
+                reasons.append('blocked meaningful raw UNDER -> thin OVER')
+            elif sig.get('low_opp') and not sig.get('elite_k_skill') and over_edge is not None and over_edge <= 0.95:
+                preserve_raw_side('V19_PRESERVE_RAW_CONTACT_ENV_FLIP')
+                reasons.append('blocked OVER flip in contact/low-K opponent environment')
+            else:
+                action = 'V19_ALLOW_CONFIRMED_UNDER_TO_OVER_RESCUE'
+                official = 'OVER'
+                reasons.append('allowed confirmed UNDER->OVER rescue')
+
+        # Raw OVER -> V14 UNDER: do not let suppression break raw OVER wins
+        # unless the contact/low-skill evidence is clearly against the over.
+        elif raw_side == 'OVER' and side == 'UNDER':
+            near_line_under = under_gap is not None and under_gap <= 0.55
+            raw_over_meaningful = sig.get('raw_edge') is not None and sig.get('raw_edge') >= 0.35
+            confirmed_suppression = (sig.get('low_k_skill') or sig.get('low_opp') or sig.get('short_work')) and not (sig.get('strong_k_skill') and sig.get('high_opp'))
+            if near_line_under and raw_over_meaningful and not confirmed_suppression:
+                preserve_raw_side('V19_PRESERVE_RAW_OVER_NEAR_LINE_UNDER_FLIP')
+                reasons.append('blocked near-line UNDER flip against raw OVER support')
+            elif raw_over_meaningful and (sig.get('strong_k_skill') or sig.get('full_work')) and not sig.get('low_opp'):
+                preserve_raw_side('V19_PRESERVE_RAW_OVER_SUPPORT_FLIP')
+                reasons.append('blocked UNDER flip; raw OVER had K/workload support')
+            else:
+                action = 'V19_ALLOW_CONFIRMED_OVER_TO_UNDER_SUPPRESSION'
+                official = 'UNDER'
+                reasons.append('allowed confirmed OVER->UNDER suppression')
+
+    # ------------------------------------------------------------------
+    # B) Loss cutter: after the preserve gate, do not print fragile official
+    #    plays.  They remain visible in the board as PASS/TRACK with the
+    #    underlying side for audit, but they should not create another 14-loss
+    #    official slate.
+    # ------------------------------------------------------------------
+    side2 = _sv2v19_side(final, linef)
+    edge2 = float(final) - linef
+    ae = abs(edge2)
+    low_conf = prob is not None and float(prob) < 56.0
+    very_low_conf = prob is not None and float(prob) < 54.0
+
+    # Thin line crossing is the main source of broken wins/losses.
+    if official in {'OVER','UNDER'}:
+        if ae < 0.25:
+            pass_track('V19_PASS_EDGE_UNDER_0_25')
+            reasons.append('official loss-cutter: edge under 0.25K')
+        elif ae < 0.45 and low_conf:
+            pass_track('V19_PASS_THIN_EDGE_LOW_CONF')
+            reasons.append('official loss-cutter: thin edge + low confidence')
+        elif official == 'OVER':
+            # Do not play weak/low-confidence overs in contact environments.
+            if ae <= 0.70 and (sig.get('low_opp') or sig.get('low_k_skill')) and not sig.get('elite_k_skill'):
+                pass_track('V19_PASS_WEAK_OVER_CONTACT_TRAP')
+                reasons.append('official loss-cutter: weak OVER contact trap')
+            elif linef >= 5.5 and ae <= 0.80 and not (sig.get('elite_k_skill') and (sig.get('strong_opp') or sig.get('full_work'))):
+                pass_track('V19_PASS_HIGH_LINE_THIN_OVER')
+                reasons.append('official loss-cutter: high-line thin OVER lacks elite confirmation')
+            elif sig.get('relieverish') and linef <= 2.5 and not (sig.get('elite_k_skill') and sig.get('high_opp')):
+                pass_track('V19_PASS_LOW_LINE_RELIEVER_VOLATILITY')
+                reasons.append('official loss-cutter: low-line reliever volatility')
+            elif very_low_conf and ae <= 0.95:
+                pass_track('V19_PASS_VERY_LOW_CONF_OVER')
+                reasons.append('official loss-cutter: very low confidence OVER')
+        elif official == 'UNDER':
+            # Avoid false unders when the line is reachable and K pressure exists.
+            near_under = linef - float(final) <= 0.55
+            reachable_under = linef - float(final) <= 1.10
+            if near_under and (sig.get('strong_k_skill') or sig.get('high_opp')) and sig.get('full_work'):
+                pass_track('V19_PASS_NEAR_LINE_FALSE_UNDER_RISK')
+                reasons.append('official loss-cutter: near-line false UNDER risk')
+            elif reachable_under and linef <= 4.5 and (sig.get('strong_k_skill') or sig.get('high_opp')) and sig.get('full_work'):
+                pass_track('V19_PASS_LOW_LINE_FALSE_UNDER_RISK')
+                reasons.append('official loss-cutter: low-line false UNDER risk')
+            elif sig.get('ceiling') is not None and float(sig.get('ceiling')) >= linef + 2.5 and near_under:
+                pass_track('V19_PASS_CEILING_OVER_LINE_UNDER_RISK')
+                reasons.append('official loss-cutter: ceiling over line on near UNDER')
+
+    if not reasons:
+        reasons.append('V19 kept V14; passed preserve/loss-cutter checks')
+
+    return _sv2v19_force_aliases(base, final, linef, official, action, '; '.join(reasons), sig)
+
+
+def _sv2v19_apply_board_rows(rows):
+    try:
+        return [_sv2v19_apply_row(dict(r)) if isinstance(r, dict) else r for r in (rows or [])]
+    except Exception as exc:
+        try:
+            st.session_state['sol_v2_v19_board_apply_error'] = str(exc)[:240]
+        except Exception:
+            pass
+        return rows
+
+
+def _sv2v19_apply_df(df):
+    try:
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            return df
+        return pd.DataFrame([_sv2v19_apply_row(r.to_dict()) for _, r in df.iterrows()])
+    except Exception as exc:
+        try:
+            st.session_state['sol_v2_v19_df_apply_error'] = str(exc)[:240]
+        except Exception:
+            pass
+        return df
+
+
+try:
+    if isinstance(globals().get('board'), list) and board:
+        board = _sv2v19_apply_board_rows(board)
+        if st.session_state.get('loaded_picks'):
+            st.session_state.loaded_picks = board
+except Exception as _sv2v19_board_err:
+    try:
+        st.session_state['sol_v2_v19_visible_board_error'] = str(_sv2v19_board_err)[:240]
+    except Exception:
+        pass
+
+
+_SOLV2V19_PREV_BUILD_KPROJ_TABLE = globals().get('build_kproj_table')
+if callable(_SOLV2V19_PREV_BUILD_KPROJ_TABLE):
+    def build_kproj_table(board):
+        return _sv2v19_apply_df(_SOLV2V19_PREV_BUILD_KPROJ_TABLE(board))
+
+
+_SOLV2V19_PREV_KCLEAN_FINAL_PROJ_LINE = globals().get('_kclean_final_proj_line')
+def _kclean_final_proj_line(row):
+    r = _sv2v19_apply_row(row.to_dict() if hasattr(row, 'to_dict') else dict(row or {}))
+    proj = _sv2v19_num(_sv2v19_pick(r, [
+        'SOL V2 V19 Projection', 'SOL V2 V14 Projection', 'SOL V2 Adjusted Projection',
+        'K V12 Adjusted Projection', 'K PROJ', 'Canonical Final K Projection',
+        'Line-Aware Smart Final K Projection'
+    ]), float('nan'))
+    line = _sv2v19_num(_sv2v19_pick(r, ['Canonical Line', 'UD/Line', 'Line', 'Underdog Line', 'Strikeout Line', 'line']), float('nan'))
+    return proj, line
+
+
+def _kclean_side_label(row):
+    r = _sv2v19_apply_row(row.to_dict() if hasattr(row, 'to_dict') else dict(row or {}))
+    public = str(_sv2v19_pick(r, ['SOL V2 V19 Public Side', 'SOL V2 V19 Main Decision', 'SOL V2 Card Main Side'], '')).upper()
+    if 'PASS' in public:
+        return 'PASS'
+    if 'OVER' in public:
+        return 'OVER'
+    if 'UNDER' in public:
+        return 'UNDER'
+    proj, line = _kclean_final_proj_line(r)
+    return _sv2v19_side(proj, line)
+
+
+def _kclean_copy_paste_slate(df, include_thin=False, force_all_players_ou=False):
+    """SOL V2 V19 loss-cut official copy/paste slate.
+
+    Default output prints only official V19 plays.  PASS/TRACK rows stay in the
+    board/export and show when include_thin/force_all_players_ou is enabled.
+    """
+    try:
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            return ''
+        d = _sv2v19_apply_df(df.copy())
+        if 'Line Source' in d.columns and not force_all_players_ou:
+            d = d[d['Line Source'].astype(str).str.upper().eq('UNDERDOG')].copy()
+        if d.empty:
+            return ''
+        if 'UD/Line' not in d.columns:
+            d['UD/Line'] = d.get('Line')
+        d['UD/Line'] = pd.to_numeric(d['UD/Line'], errors='coerce')
+        d = d[d['UD/Line'].notna()].copy()
+        if '_owp_one_final_row_per_pitcher' in globals():
+            try:
+                d = _owp_one_final_row_per_pitcher(d)
+            except Exception:
+                pass
+
+        lines = ['SOL V2 V19 — LOSS CUT / PRESERVE WINS', '']
+        pass_lines = []
+        for matchup, group in d.groupby('Matchup', sort=False):
+            block = []
+            pass_block = []
+            for _, rr in group.iterrows():
+                row = _sv2v19_apply_row(rr.to_dict())
+                proj = _sv2v19_num(row.get('SOL V2 V19 Projection'), _sv2v19_num(row.get('K PROJ'), None))
+                raw = _sv2v19_num(row.get('SOL V2 V19 Raw Challenger Projection'), _sv2v19_num(row.get('SOL V2 Raw Challenger Projection'), None))
+                v14 = _sv2v19_num(row.get('SOL V2 V19 V14 Projection'), _sv2v19_num(row.get('SOL V2 V14 Projection'), None))
+                line = _sv2v19_num(row.get('UD/Line'), None)
+                if proj is None or line is None:
+                    continue
+                under_side = _sv2v19_side(proj, line)
+                public = str(row.get('SOL V2 V19 Public Side') or row.get('SOL V2 V19 Main Decision') or under_side).upper()
+                is_pass = 'PASS' in public
+                side_text = under_side if under_side in {'OVER','UNDER'} else 'PASS'
+                ip = _sv2v19_num(_sv2v19_pick(row, ['IP Floor', 'IP PROJ', 'Projected IP', 'IP Projection', 'Proj IP', 'APP100 Projected IP'], None), None)
+                ip_text = '—' if ip is None else f'{ip:.2f}'
+                prob = _sv2v19_pct(_sv2v19_pick(row, ['SOL V2 V19 Prob %', 'Confidence %', 'Final Decision Confidence %', 'K Sim Current Side Prob %'], None), None)
+                prob_text = '' if prob is None else f' — {prob:.0f}%'
+                raw_text = '' if raw is None else f' — RAW {raw:.2f}'
+                v14_text = '' if v14 is None else f' / V14 {v14:.2f}'
+                delta_text = '' if raw is None else f' / Δ {float(proj)-float(raw):+.2f}'
+                action = str(row.get('SOL V2 V19 Action') or 'KEEP').replace('_', ' ')
+                if is_pass:
+                    entry = f"• {row.get('Pitcher')} — PASS/TRACK ({side_text} {float(line):.1f}) — {float(proj):.2f} K{prob_text} — IP {ip_text}{raw_text}{v14_text}{delta_text} — {action}"
+                    pass_block.append(entry)
+                    continue
+                # official only; still keep a minimum edge so weak rows do not print.
+                if not include_thin:
+                    if abs(float(proj) - float(line)) < 0.25:
+                        continue
+                    if prob is not None and float(prob) < 53.0:
+                        continue
+                block.append(f"• {row.get('Pitcher')} — V19 {side_text} {float(line):.1f} — {float(proj):.2f} K{prob_text} — IP {ip_text}{raw_text}{v14_text}{delta_text} — {action}")
+            if block:
+                lines.append(str(matchup))
+                lines.extend(block)
+                lines.append('')
+            if pass_block:
+                pass_lines.append(str(matchup))
+                pass_lines.extend(pass_block)
+                pass_lines.append('')
+        if include_thin and pass_lines:
+            lines.append('TRACK / PASS — blocked loss-risk rows')
+            lines.append('')
+            lines.extend(pass_lines)
+        return '\n'.join(lines).strip()
+    except Exception as e:
+        return f'SOL V2 V19 slate builder unavailable: {e}'
+
+
+def build_copy_paste_k_slate(df, show_pass_notes=False, force_all_players_ou=False):
+    return _kclean_copy_paste_slate(df, include_thin=bool(show_pass_notes or force_all_players_ou), force_all_players_ou=bool(force_all_players_ou))
+
+
+try:
+    st.sidebar.success('✅ SOL V2 V19 ACTIVE — loss-cut preserve-win guard locked into board/cards/copy')
+    st.caption('✅ V19 active: official copy hides/pass-tracks fragile rows, preserves raw Challenger side on thin dangerous flips, and keeps V18 no-hardcoded PropLine PO manual mode.')
+except Exception:
+    pass
+
 tab_kproj, tab_beta_outs, tab_first_inning_k, tab_beta_ip_debug, tab_moneyline, tab_loss_lab, tab_learning_lab, tab_calibration, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
     "K PROJ / UPSIDE",
